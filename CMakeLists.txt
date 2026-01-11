@@ -91,6 +91,11 @@ target_link_libraries(orbitops orbitops_core)
 add_executable(orbitops_server src/server_main.cpp)
 target_link_libraries(orbitops_server orbitops_grpc)
 
+# gRPC Client test executable
+add_executable(grpc_client_test src/grpc_client_test.cpp)
+target_include_directories(grpc_client_test PRIVATE ${PROTO_OUT_DIR})
+target_link_libraries(grpc_client_test orbitops_proto)
+
 # Benchmark executable
 add_executable(benchmark benchmarks/benchmark.cpp)
 target_link_libraries(benchmark orbitops_core)
