@@ -8,6 +8,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Find OpenMP
 find_package(OpenMP)
 
+# Find gRPC and Protobuf
+find_package(protobuf CONFIG REQUIRED)
+find_package(gRPC CONFIG REQUIRED)
+
+# Get the protoc and grpc_cpp_plugin executables
+find_program(_PROTOBUF_PROTOC protoc)
+find_program(_GRPC_CPP_PLUGIN_EXECUTABLE grpc_cpp_plugin)
+
 # Compiler flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
     set(CMAKE_CXX_FLAGS_DEBUG "-g -O0 -Wall -Wextra")
@@ -16,6 +24,40 @@ endif()
 
 # Include directories
 include_directories(${CMAKE_SOURCE_DIR}/include)
+
+# Proto file
+set(PROTO_FILE "${CMAKE_SOURCE_DIR}/proto/orbit_ops.proto")
+set(PROTO_OUT_DIR "${CMAKE_BINARY_DIR}/generated")
+file(MAKE_DIRECTORY ${PROTO_OUT_DIR})
+
+# Generate protobuf and gRPC sources
+set(PROTO_SRCS "${PROTO_OUT_DIR}/orbit_ops.pb.cc")
+set(PROTO_HDRS "${PROTO_OUT_DIR}/orbit_ops.pb.h")
+set(GRPC_SRCS "${PROTO_OUT_DIR}/orbit_ops.grpc.pb.cc")
+set(GRPC_HDRS "${PROTO_OUT_DIR}/orbit_ops.grpc.pb.h")
+
+add_custom_command(
+    OUTPUT "${PROTO_SRCS}" "${PROTO_HDRS}" "${GRPC_SRCS}" "${GRPC_HDRS}"
+    COMMAND ${_PROTOBUF_PROTOC}
+    ARGS --grpc_out "${PROTO_OUT_DIR}"
+         --cpp_out "${PROTO_OUT_DIR}"
+         -I "${CMAKE_SOURCE_DIR}/proto"
+         --plugin=protoc-gen-grpc="${_GRPC_CPP_PLUGIN_EXECUTABLE}"
+         "${PROTO_FILE}"
+    DEPENDS "${PROTO_FILE}"
+    COMMENT "Generating gRPC/Protobuf sources"
+)
+
+# Proto library
+add_library(orbitops_proto STATIC
+    ${PROTO_SRCS}
+    ${GRPC_SRCS}
+)
+target_include_directories(orbitops_proto PUBLIC ${PROTO_OUT_DIR})
+target_link_libraries(orbitops_proto PUBLIC
+    protobuf::libprotobuf
+    gRPC::grpc++
+)
 
 # Core library
 add_library(orbitops_core STATIC
@@ -31,9 +73,23 @@ if(OpenMP_CXX_FOUND)
     target_link_libraries(orbitops_core PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
+# gRPC server library
+add_library(orbitops_grpc STATIC
+    src/grpc_server.cpp
+)
+target_include_directories(orbitops_grpc PUBLIC ${PROTO_OUT_DIR})
+target_link_libraries(orbitops_grpc PUBLIC
+    orbitops_core
+    orbitops_proto
+)
+
 # Main executable
 add_executable(orbitops src/main.cpp)
 target_link_libraries(orbitops orbitops_core)
+
+# gRPC Server executable
+add_executable(orbitops_server src/server_main.cpp)
+target_link_libraries(orbitops_server orbitops_grpc)
 
 # Benchmark executable
 add_executable(benchmark benchmarks/benchmark.cpp)
@@ -46,4 +102,3 @@ target_link_libraries(tests orbitops_core)
 
 add_executable(test_validation tests/test_sgp4_validation.cpp)
 target_link_libraries(test_validation orbitops_core)
-
