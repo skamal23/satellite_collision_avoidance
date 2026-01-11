@@ -73,7 +73,7 @@ int main(int argc, char* argv[]) {
     if (!conjunctions.empty()) {
         std::sort(conjunctions.begin(), conjunctions.end(),
             [](const Conjunction& a, const Conjunction& b) {
-                return a.distance_km < b.distance_km;
+                return a.distance < b.distance;
             });
         
         std::cout << "\nClosest approaches:" << std::endl;
@@ -82,7 +82,7 @@ int main(int argc, char* argv[]) {
             std::cout << "  " << conjunctions[i].sat1_id << " <-> " 
                       << conjunctions[i].sat2_id << ": "
                       << std::fixed << std::setprecision(3) 
-                      << conjunctions[i].distance_km << " km" << std::endl;
+                      << conjunctions[i].distance << " km" << std::endl;
         }
     }
 

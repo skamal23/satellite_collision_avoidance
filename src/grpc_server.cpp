@@ -11,22 +11,16 @@
 #include <chrono>
 #include <thread>
 #include <iostream>
+#include <mutex>
 
 namespace orbitops {
-
-// Convert internal Vec3 to protobuf Vec3
-void to_proto(const ::Vec3& v, ::orbitops::Vec3* pb) {
-    pb->set_x(v.x);
-    pb->set_y(v.y);
-    pb->set_z(v.z);
-}
 
 // Service implementation
 class OrbitOpsServiceImpl final : public OrbitOps::Service {
 public:
     OrbitOpsServiceImpl(const std::string& tle_file) {
         // Load TLEs
-        tles_ = TLEParser::parse_tles(tle_file);
+        tles_ = parse_tle_file(tle_file);
         std::cout << "[OrbitOps] Loaded " << tles_.size() << " satellites\n";
         
         // Create optimized satellite system
@@ -64,6 +58,8 @@ public:
         
         if (step <= 0) step = 60.0;  // Default 1 minute
         
+        std::lock_guard<std::mutex> lock(system_mutex_);
+        
         for (double t = start; t <= end && !context->IsCancelled(); t += step) {
             // Propagate all satellites
             propagate_all_optimized(system_, t / 60.0);  // Convert seconds to minutes
@@ -77,14 +73,14 @@ public:
                 pos->set_name(tles_[i].name);
                 
                 auto* position = pos->mutable_position();
-                position->set_x(system_.pos_x[i]);
-                position->set_y(system_.pos_y[i]);
-                position->set_z(system_.pos_z[i]);
+                position->set_x(system_.x[i]);
+                position->set_y(system_.y[i]);
+                position->set_z(system_.z[i]);
                 
                 auto* velocity = pos->mutable_velocity();
-                velocity->set_x(system_.vel_x[i]);
-                velocity->set_y(system_.vel_y[i]);
-                velocity->set_z(system_.vel_z[i]);
+                velocity->set_x(system_.vx[i]);
+                velocity->set_y(system_.vy[i]);
+                velocity->set_z(system_.vz[i]);
                 
                 pos->set_timestamp(t);
             }
@@ -111,15 +107,17 @@ public:
         
         if (step <= 0) step = 60.0;  // Default 1 minute
         
-        SpatialGrid grid;
+        std::lock_guard<std::mutex> lock(system_mutex_);
+        SpatialGrid grid(threshold * 2);  // Cell size = 2x threshold
         
         for (double t = start; t <= end && !context->IsCancelled(); t += step) {
             // Propagate
-            propagate_all_optimized(system_, t / 60.0);
+            double time_minutes = t / 60.0;
+            propagate_all_optimized(system_, time_minutes);
             
             // Build spatial grid and detect conjunctions
-            grid.build(system_, threshold);
-            auto conjunctions = grid.find_conjunctions(system_, threshold);
+            grid.build(system_);
+            auto conjunctions = grid.find_conjunctions(system_, threshold, time_minutes);
             
             if (!conjunctions.empty()) {
                 ConjunctionBatch batch;
@@ -136,9 +134,9 @@ public:
                     warning->set_miss_distance(conj.distance);
                     
                     // Calculate relative velocity
-                    double dvx = system_.vel_x[conj.sat1_id] - system_.vel_x[conj.sat2_id];
-                    double dvy = system_.vel_y[conj.sat1_id] - system_.vel_y[conj.sat2_id];
-                    double dvz = system_.vel_z[conj.sat1_id] - system_.vel_z[conj.sat2_id];
+                    double dvx = system_.vx[conj.sat1_id] - system_.vx[conj.sat2_id];
+                    double dvy = system_.vy[conj.sat1_id] - system_.vy[conj.sat2_id];
+                    double dvz = system_.vz[conj.sat1_id] - system_.vz[conj.sat2_id];
                     double rel_vel = std::sqrt(dvx*dvx + dvy*dvy + dvz*dvz);
                     warning->set_relative_velocity(rel_vel);
                     
@@ -178,16 +176,16 @@ public:
         double dvz = request->delta_v().z();
         double burn_time = request->burn_time();
         
-        // Create a copy of the system for simulation
-        SatelliteSystem sim_system = system_;
+        // Create a separate system for simulation
+        SatelliteSystem sim_system = create_satellite_system(tles_);
         
         // Propagate to burn time
         propagate_all_optimized(sim_system, burn_time / 60.0);
         
         // Apply delta-v
-        sim_system.vel_x[sat_id] += dvx;
-        sim_system.vel_y[sat_id] += dvy;
-        sim_system.vel_z[sat_id] += dvz;
+        sim_system.vx[sat_id] += dvx;
+        sim_system.vy[sat_id] += dvy;
+        sim_system.vz[sat_id] += dvz;
         
         // Propagate for one orbit (~90 minutes for LEO) and record positions
         double orbital_period = 90.0 * 60.0;  // seconds
@@ -201,14 +199,14 @@ public:
             pos->set_name(tles_[sat_id].name);
             
             auto* position = pos->mutable_position();
-            position->set_x(sim_system.pos_x[sat_id]);
-            position->set_y(sim_system.pos_y[sat_id]);
-            position->set_z(sim_system.pos_z[sat_id]);
+            position->set_x(sim_system.x[sat_id]);
+            position->set_y(sim_system.y[sat_id]);
+            position->set_z(sim_system.z[sat_id]);
             
             auto* velocity = pos->mutable_velocity();
-            velocity->set_x(sim_system.vel_x[sat_id]);
-            velocity->set_y(sim_system.vel_y[sat_id]);
-            velocity->set_z(sim_system.vel_z[sat_id]);
+            velocity->set_x(sim_system.vx[sat_id]);
+            velocity->set_y(sim_system.vy[sat_id]);
+            velocity->set_z(sim_system.vz[sat_id]);
             
             pos->set_timestamp(t);
         }
@@ -228,7 +226,6 @@ public:
         OrbitPath* response
     ) override {
         // Default to first satellite if not specified
-        // In a real implementation, we'd extend the proto to include satellite_id
         int sat_id = 0;
         
         double start = request->start_time();
@@ -236,6 +233,8 @@ public:
         double step = request->step_seconds();
         
         if (step <= 0) step = 60.0;
+        
+        std::lock_guard<std::mutex> lock(system_mutex_);
         
         response->set_satellite_id(sat_id);
         response->set_name(tles_[sat_id].name);
@@ -247,9 +246,9 @@ public:
             propagate_all_optimized(system_, t / 60.0);
             
             auto* pos = response->add_positions();
-            pos->set_x(system_.pos_x[sat_id]);
-            pos->set_y(system_.pos_y[sat_id]);
-            pos->set_z(system_.pos_z[sat_id]);
+            pos->set_x(system_.x[sat_id]);
+            pos->set_y(system_.y[sat_id]);
+            pos->set_z(system_.z[sat_id]);
         }
         
         return grpc::Status::OK;
@@ -258,6 +257,7 @@ public:
 private:
     std::vector<TLE> tles_;
     SatelliteSystem system_;
+    std::mutex system_mutex_;  // Protect system_ for concurrent access
 };
 
 // Pimpl implementation
@@ -318,4 +318,3 @@ std::string OrbitOpsServer::address() const {
 }
 
 } // namespace orbitops
-
