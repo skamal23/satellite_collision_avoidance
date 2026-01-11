@@ -65,21 +65,24 @@ struct SatelliteSystem {
     void allocate(size_t n) {
         deallocate();
         count = n;
+        // Round up size to multiple of 64 for aligned_alloc
+        size_t alloc_size = ((n * sizeof(double) + 63) / 64) * 64;
+        
         // Aligned allocation for SIMD
-        x = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        y = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        z = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        vx = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        vy = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        vz = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        incl = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        raan0 = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        ecc = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        argp0 = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        M0 = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        n0 = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        a0 = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
-        bstar = static_cast<double*>(std::aligned_alloc(64, n * sizeof(double)));
+        x = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        y = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        z = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        vx = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        vy = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        vz = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        incl = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        raan0 = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        ecc = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        argp0 = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        M0 = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        n0 = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        a0 = static_cast<double*>(std::aligned_alloc(64, alloc_size));
+        bstar = static_cast<double*>(std::aligned_alloc(64, alloc_size));
         catalog_numbers.resize(n);
         names.resize(n);
         
