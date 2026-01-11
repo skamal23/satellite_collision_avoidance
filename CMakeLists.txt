@@ -39,3 +39,8 @@ target_link_libraries(orbitops orbitops_core)
 add_executable(benchmark benchmarks/benchmark.cpp)
 target_link_libraries(benchmark orbitops_core)
 
+# Test executable
+include_directories(${CMAKE_SOURCE_DIR}/tests)
+add_executable(tests tests/test_main.cpp)
+target_link_libraries(tests orbitops_core)
+
