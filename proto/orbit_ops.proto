@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package orbitops;
+
+option cc_enable_arenas = true;
+
+// Core position data
+message Vec3 {
+  double x = 1;
+  double y = 2;
+  double z = 3;
+}
+
+message SatellitePosition {
+  int32 id = 1;
+  string name = 2;
+  Vec3 position = 3;     // ECI coordinates in km
+  Vec3 velocity = 4;     // km/s
+  double timestamp = 5;  // Unix timestamp
+}
+
+message ConjunctionWarning {
+  int32 sat1_id = 1;
+  string sat1_name = 2;
+  int32 sat2_id = 3;
+  string sat2_name = 4;
+  double tca = 5;                    // Time of Closest Approach (Unix timestamp)
+  double miss_distance = 6;          // km
+  double relative_velocity = 7;      // km/s
+  double collision_probability = 8;  // 0.0 to 1.0
+}
+
+message ManeuverRequest {
+  int32 satellite_id = 1;
+  Vec3 delta_v = 2;      // km/s change in velocity
+  double burn_time = 3;  // Unix timestamp of maneuver
+}
+
+message ManeuverResponse {
+  bool success = 1;
+  string message = 2;
+  repeated SatellitePosition predicted_path = 3;
+  double new_miss_distance = 4;  // km, if there was a conjunction
+}
+
+message OrbitPath {
+  int32 satellite_id = 1;
+  string name = 2;
+  repeated Vec3 positions = 3;
+  double start_time = 4;
+  double end_time = 5;
+  double step_seconds = 6;
+}
+
+// Request/Response messages
+message TimeRange {
+  double start_time = 1;  // Unix timestamp
+  double end_time = 2;
+  double step_seconds = 3;
+}
+
+message ScreeningParams {
+  double threshold_km = 1;           // Conjunction threshold (default 10km)
+  double start_time = 2;
+  double end_time = 3;
+  double step_seconds = 4;
+  repeated int32 satellite_ids = 5;  // Empty = all satellites
+}
+
+message SatelliteInfo {
+  int32 id = 1;
+  string name = 2;
+  string intl_designator = 3;
+  double inclination = 4;      // degrees
+  double eccentricity = 5;
+  double mean_motion = 6;      // rev/day
+  double epoch = 7;            // Unix timestamp
+}
+
+message CatalogRequest {}
+
+message CatalogResponse {
+  repeated SatelliteInfo satellites = 1;
+  int32 total_count = 2;
+}
+
+message PositionBatch {
+  repeated SatellitePosition positions = 1;
+  double timestamp = 2;
+}
+
+message ConjunctionBatch {
+  repeated ConjunctionWarning conjunctions = 1;
+  double timestamp = 2;
+  int32 total_screened = 3;
+}
+
+// The main service
+service OrbitOps {
+  // Stream satellite positions over time
+  rpc StreamPositions(TimeRange) returns (stream PositionBatch);
+  
+  // Stream conjunction warnings
+  rpc StreamConjunctions(ScreeningParams) returns (stream ConjunctionBatch);
+  
+  // Simulate a maneuver and return predicted trajectory
+  rpc SimulateManeuver(ManeuverRequest) returns (ManeuverResponse);
+  
+  // Get the satellite catalog
+  rpc GetCatalog(CatalogRequest) returns (CatalogResponse);
+  
+  // Get a single satellite's full orbit path
+  rpc GetOrbitPath(TimeRange) returns (OrbitPath);
+}
+
