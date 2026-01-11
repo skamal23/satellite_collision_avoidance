@@ -1,27 +1,19 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, memo } from 'react';
 import {
-  Ion,
   Viewer,
   Cartesian3,
   Color,
   PointPrimitiveCollection,
-  PolylineCollection,
-  LabelCollection,
   NearFarScalar,
-  VerticalOrigin,
-  HorizontalOrigin,
-  Cartographic,
-  Math as CesiumMath,
-  createWorldTerrainAsync,
+  OpenStreetMapImageryProvider,
   SceneMode,
-  ImageryLayer,
-  IonImageryProvider,
+  defined,
 } from 'cesium';
 import 'cesium/Build/Cesium/Widgets/widgets.css';
 import type { SatellitePosition, FilterState, ConjunctionWarning } from '../types';
 
-// Free Cesium ion token (replace with your own for production)
-Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJlYWE1OWUxNy1mMWZiLTQzYjYtYTQ0OS1kMWFjYmFkNjc5YzciLCJpZCI6NTc2ODksImlhdCI6MTYyNzg0MDU3NX0.NnAeUUjVKSF0eDkPCPpZgP-GnGqLLEQO_7rBs8o2UzU';
+// Set CESIUM_BASE_URL for workers
+window.CESIUM_BASE_URL = '/cesium';
 
 interface GlobeViewerProps {
   positions: SatellitePosition[];
@@ -31,21 +23,17 @@ interface GlobeViewerProps {
   theme: 'light' | 'dark';
 }
 
-// Convert latitude/longitude/altitude to Cartesian (for display purposes)
-// We'll convert ECI-like coordinates to geographic coordinates
-function eciToGeographic(pos: { x: number; y: number; z: number }, time: number) {
-  // Simplified conversion from ECI to ECEF (ignoring Earth rotation for now)
+// Convert ECI-like coordinates to geographic
+function eciToGeographic(pos: { x: number; y: number; z: number }) {
   const r = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z);
   const lat = Math.asin(pos.z / r) * (180 / Math.PI);
   const lon = Math.atan2(pos.y, pos.x) * (180 / Math.PI);
-  const alt = (r - 6371) * 1000; // Convert to meters
-  
-  return { lat, lon, alt: Math.max(alt, 100000) }; // Minimum 100km altitude for visibility
+  const alt = (r - 6371) * 1000; // Convert km to meters
+  return { lat, lon, alt: Math.max(alt, 100000) };
 }
 
-export function GlobeViewer({
+function GlobeViewerComponent({
   positions,
-  conjunctions,
   filters,
   onSatelliteClick,
   theme,
@@ -53,211 +41,172 @@ export function GlobeViewer({
   const containerRef = useRef<HTMLDivElement>(null);
   const viewerRef = useRef<Viewer | null>(null);
   const pointsRef = useRef<PointPrimitiveCollection | null>(null);
-  const labelsRef = useRef<LabelCollection | null>(null);
-  const linesRef = useRef<PolylineCollection | null>(null);
-  const animationFrameRef = useRef<number>(0);
+  const isInitialized = useRef(false);
 
   // Initialize viewer once
   useEffect(() => {
-    if (!containerRef.current || viewerRef.current) return;
+    if (!containerRef.current || isInitialized.current) return;
+    isInitialized.current = true;
 
-    const viewer = new Viewer(containerRef.current, {
-      // Disable all default widgets for performance
-      animation: false,
-      timeline: false,
-      baseLayerPicker: false,
-      geocoder: false,
-      homeButton: false,
-      infoBox: false,
-      sceneModePicker: false,
-      selectionIndicator: false,
-      navigationHelpButton: false,
-      fullscreenButton: false,
-      vrButton: false,
-      // Performance settings
-      requestRenderMode: true, // Only render when needed
-      maximumRenderTimeChange: Infinity,
-      targetFrameRate: 30, // Cap at 30 FPS for smoothness
-      useBrowserRecommendedResolution: false,
-      msaaSamples: 1, // Disable MSAA for performance
-    });
+    try {
+      const viewer = new Viewer(containerRef.current, {
+        animation: false,
+        timeline: false,
+        baseLayerPicker: false,
+        geocoder: false,
+        homeButton: false,
+        infoBox: false,
+        sceneModePicker: false,
+        selectionIndicator: false,
+        navigationHelpButton: false,
+        fullscreenButton: false,
+        vrButton: false,
+        sceneMode: SceneMode.SCENE3D,
+        // Performance
+        requestRenderMode: true,
+        maximumRenderTimeChange: Infinity,
+        targetFrameRate: 30,
+        msaaSamples: 1,
+        // Use OpenStreetMap instead of Cesium Ion
+        imageryProvider: new OpenStreetMapImageryProvider({
+          url: 'https://tile.openstreetmap.org/',
+        }),
+      });
 
-    // Disable unnecessary features
-    viewer.scene.globe.enableLighting = false;
-    viewer.scene.fog.enabled = false;
-    viewer.scene.globe.showGroundAtmosphere = false;
-    viewer.scene.skyAtmosphere.show = false;
-    viewer.scene.sun.show = false;
-    viewer.scene.moon.show = false;
-    viewer.scene.skyBox.show = theme === 'dark';
-    
-    // Optimize globe rendering
-    viewer.scene.globe.maximumScreenSpaceError = 4; // Lower quality for speed
-    viewer.scene.globe.tileCacheSize = 100;
-    
-    // Create primitive collections for efficient rendering
-    const points = new PointPrimitiveCollection();
-    const labels = new LabelCollection();
-    const lines = new PolylineCollection();
-    
-    viewer.scene.primitives.add(points);
-    viewer.scene.primitives.add(labels);
-    viewer.scene.primitives.add(lines);
+      // Disable heavy features
+      viewer.scene.globe.enableLighting = false;
+      viewer.scene.fog.enabled = false;
+      viewer.scene.globe.showGroundAtmosphere = false;
+      viewer.scene.skyAtmosphere.show = false;
+      viewer.scene.sun.show = false;
+      viewer.scene.moon.show = false;
+      viewer.scene.skyBox.show = false;
+      viewer.scene.globe.maximumScreenSpaceError = 4;
 
-    pointsRef.current = points;
-    labelsRef.current = labels;
-    linesRef.current = lines;
-    viewerRef.current = viewer;
+      // Create point collection
+      const points = new PointPrimitiveCollection();
+      viewer.scene.primitives.add(points);
+      pointsRef.current = points;
 
-    // Set initial camera position
-    viewer.camera.setView({
-      destination: Cartesian3.fromDegrees(0, 0, 30000000), // 30,000 km altitude
-    });
+      // Set camera
+      viewer.camera.setView({
+        destination: Cartesian3.fromDegrees(0, 20, 25000000),
+      });
 
-    // Hide credits
-    const creditContainer = viewer.cesiumWidget.creditContainer as HTMLElement;
-    creditContainer.style.display = 'none';
+      // Hide credits
+      const credits = viewer.cesiumWidget.creditContainer as HTMLElement;
+      if (credits) credits.style.display = 'none';
+
+      viewerRef.current = viewer;
+
+      // Request initial render
+      viewer.scene.requestRender();
+    } catch (err) {
+      console.error('Failed to initialize Cesium viewer:', err);
+    }
 
     return () => {
-      cancelAnimationFrame(animationFrameRef.current);
-      viewer.destroy();
+      if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+        try {
+          // Clean up primitives first
+          if (pointsRef.current) {
+            pointsRef.current.removeAll();
+          }
+          viewerRef.current.destroy();
+        } catch (e) {
+          console.warn('Error during viewer cleanup:', e);
+        }
+      }
       viewerRef.current = null;
+      pointsRef.current = null;
+      isInitialized.current = false;
     };
   }, []);
 
   // Update theme
   useEffect(() => {
-    if (!viewerRef.current) return;
-    const viewer = viewerRef.current;
+    if (!viewerRef.current || viewerRef.current.isDestroyed()) return;
     
-    viewer.scene.backgroundColor = theme === 'dark'
+    viewerRef.current.scene.backgroundColor = theme === 'dark'
       ? Color.fromCssColorString('#080c18')
       : Color.fromCssColorString('#e8f0ff');
-    viewer.scene.skyBox.show = theme === 'dark';
+    
+    viewerRef.current.scene.requestRender();
   }, [theme]);
 
-  // Update satellite positions efficiently
+  // Update satellites
   useEffect(() => {
-    if (!viewerRef.current || !pointsRef.current || !labelsRef.current) return;
+    if (!viewerRef.current || viewerRef.current.isDestroyed() || !pointsRef.current) return;
     
     const points = pointsRef.current;
-    const labels = labelsRef.current;
     const viewer = viewerRef.current;
     
-    // Clear existing primitives
+    // Clear and rebuild
     points.removeAll();
-    labels.removeAll();
 
-    // Limit number of satellites for performance
-    const maxSatellites = 200;
-    const visiblePositions = positions.slice(0, maxSatellites);
+    // Limit for performance
+    const maxSats = 150;
+    const toRender = positions.slice(0, maxSats);
 
-    // Add satellites as point primitives (much faster than entities)
-    visiblePositions.forEach((sat) => {
-      const geo = eciToGeographic(sat.position, sat.timestamp);
-      const position = Cartesian3.fromDegrees(geo.lon, geo.lat, geo.alt);
-      const isSelected = filters.selectedSatelliteId === sat.id;
-      
-      // Altitude-based coloring
-      const altitude = geo.alt / 1000; // km
-      let color: Color;
-      if (isSelected) {
-        color = Color.fromCssColorString('#60a5fa');
-      } else if (altitude < 2000) {
-        color = Color.fromCssColorString('#22d3ee').withAlpha(0.85);
-      } else if (altitude < 20000) {
-        color = Color.fromCssColorString('#facc15').withAlpha(0.85);
-      } else {
-        color = Color.fromCssColorString('#fb923c').withAlpha(0.85);
-      }
+    toRender.forEach((sat) => {
+      try {
+        const geo = eciToGeographic(sat.position);
+        const position = Cartesian3.fromDegrees(geo.lon, geo.lat, geo.alt);
+        const isSelected = filters.selectedSatelliteId === sat.id;
+        
+        // Color by altitude
+        const altKm = geo.alt / 1000;
+        let color: Color;
+        if (isSelected) {
+          color = Color.fromCssColorString('#60a5fa');
+        } else if (altKm < 2000) {
+          color = Color.fromCssColorString('#22d3ee').withAlpha(0.85);
+        } else if (altKm < 20000) {
+          color = Color.fromCssColorString('#facc15').withAlpha(0.85);
+        } else {
+          color = Color.fromCssColorString('#fb923c').withAlpha(0.85);
+        }
 
-      points.add({
-        position,
-        pixelSize: isSelected ? 10 : 5,
-        color,
-        outlineColor: Color.WHITE,
-        outlineWidth: isSelected ? 2 : 0,
-        scaleByDistance: new NearFarScalar(1e6, 1.2, 5e7, 0.4),
-        id: sat.id,
-      });
-
-      // Only add labels for selected satellite or if labels are enabled and zoomed in
-      if (isSelected || (filters.showLabels && visiblePositions.length < 50)) {
-        labels.add({
+        points.add({
           position,
-          text: sat.name,
-          font: '12px sans-serif',
-          fillColor: Color.WHITE,
-          outlineColor: Color.BLACK,
-          outlineWidth: 2,
-          style: 2, // FILL_AND_OUTLINE
-          verticalOrigin: VerticalOrigin.BOTTOM,
-          horizontalOrigin: HorizontalOrigin.CENTER,
-          pixelOffset: new Cartesian3(0, -15, 0) as any,
-          scaleByDistance: new NearFarScalar(1e6, 1, 3e7, 0),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          pixelSize: isSelected ? 12 : 5,
+          color,
+          outlineColor: Color.WHITE,
+          outlineWidth: isSelected ? 2 : 0,
+          scaleByDistance: new NearFarScalar(1e6, 1.5, 5e7, 0.3),
+          id: sat.id,
         });
+      } catch (e) {
+        // Skip invalid positions
       }
     });
 
-    // Request a render
     viewer.scene.requestRender();
-  }, [positions, filters.selectedSatelliteId, filters.showLabels]);
+  }, [positions, filters.selectedSatelliteId]);
 
-  // Update conjunction lines
+  // Handle clicks
   useEffect(() => {
-    if (!viewerRef.current || !linesRef.current) return;
+    if (!viewerRef.current || viewerRef.current.isDestroyed()) return;
     
-    const lines = linesRef.current;
-    const viewer = viewerRef.current;
+    const handler = viewerRef.current.screenSpaceEventHandler;
     
-    lines.removeAll();
-
-    if (!filters.showConjunctions) return;
-
-    // Only show high-risk conjunctions
-    const highRiskConjunctions = conjunctions.filter(c => c.collisionProbability >= 0.00001);
-
-    highRiskConjunctions.forEach((conj) => {
-      const sat1 = positions.find(p => p.id === conj.sat1Id);
-      const sat2 = positions.find(p => p.id === conj.sat2Id);
-      if (!sat1 || !sat2) return;
-
-      const geo1 = eciToGeographic(sat1.position, sat1.timestamp);
-      const geo2 = eciToGeographic(sat2.position, sat2.timestamp);
-      
-      const isHighRisk = conj.collisionProbability >= 0.0001;
-      
-      lines.add({
-        positions: [
-          Cartesian3.fromDegrees(geo1.lon, geo1.lat, geo1.alt),
-          Cartesian3.fromDegrees(geo2.lon, geo2.lat, geo2.alt),
-        ],
-        width: isHighRisk ? 3 : 2,
-        material: isHighRisk
-          ? Color.fromCssColorString('#ef4444').withAlpha(0.7) as any
-          : Color.fromCssColorString('#f59e0b').withAlpha(0.5) as any,
-      });
-    });
-
-    viewer.scene.requestRender();
-  }, [conjunctions, positions, filters.showConjunctions]);
-
-  // Handle click events
-  useEffect(() => {
-    if (!viewerRef.current) return;
-    const viewer = viewerRef.current;
-
-    const handler = viewer.screenSpaceEventHandler;
     handler.setInputAction((click: { position: { x: number; y: number } }) => {
-      const picked = viewer.scene.pick(click.position);
-      if (picked?.id !== undefined && typeof picked.id === 'number') {
+      if (!viewerRef.current || viewerRef.current.isDestroyed()) return;
+      
+      const picked = viewerRef.current.scene.pick(click.position);
+      if (defined(picked) && picked.id !== undefined && typeof picked.id === 'number') {
         onSatelliteClick(picked.id);
       }
     }, 0); // LEFT_CLICK
 
     return () => {
-      handler.removeInputAction(0);
+      if (viewerRef.current && !viewerRef.current.isDestroyed()) {
+        try {
+          viewerRef.current.screenSpaceEventHandler.removeInputAction(0);
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+      }
     };
   }, [onSatelliteClick]);
 
@@ -275,3 +224,6 @@ export function GlobeViewer({
     />
   );
 }
+
+// Memoize to prevent unnecessary re-renders
+export const GlobeViewer = memo(GlobeViewerComponent);

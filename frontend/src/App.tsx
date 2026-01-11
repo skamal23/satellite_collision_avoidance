@@ -1,11 +1,10 @@
-import { useState, useCallback, lazy, Suspense } from 'react';
+import { useState, useCallback } from 'react';
 import { Header, SatellitePanel, ConjunctionPanel, StatusBar } from './components';
 import { useTheme } from './hooks/useTheme';
 import { useSatellites } from './hooks/useSatellites';
 import type { FilterState, ConjunctionWarning } from './types';
 
-// Lazy load the heavy Cesium component
-const GlobeViewer = lazy(() => import('./components/GlobeViewer').then(m => ({ default: m.GlobeViewer })));
+import { GlobeViewer } from './components/GlobeViewer';
 
 const defaultFilters: FilterState = {
   searchQuery: '',
@@ -19,16 +18,6 @@ const defaultFilters: FilterState = {
   orbitType: 'all',
 };
 
-function LoadingScreen() {
-  return (
-    <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg-primary)]">
-      <div className="text-center">
-        <div className="w-16 h-16 border-4 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-[var(--text-secondary)]">Loading OrbitOps...</p>
-      </div>
-    </div>
-  );
-}
 
 function App() {
   const { theme, toggle: toggleTheme } = useTheme();
@@ -54,15 +43,13 @@ function App() {
   return (
     <div className="relative w-full h-full overflow-hidden">
       {/* 3D Globe Background */}
-      <Suspense fallback={<LoadingScreen />}>
-        <GlobeViewer
-          positions={positions}
-          conjunctions={conjunctions}
-          filters={filters}
-          onSatelliteClick={handleSatelliteSelect}
-          theme={theme}
-        />
-      </Suspense>
+      <GlobeViewer
+        positions={positions}
+        conjunctions={conjunctions}
+        filters={filters}
+        onSatelliteClick={handleSatelliteSelect}
+        theme={theme}
+      />
 
       {/* UI Overlay */}
       <Header
