@@ -7,11 +7,12 @@ import { SatellitesTab } from './components/SatellitesTab';
 import { AlertsTab } from './components/AlertsTab';
 import { TimelineTab } from './components/TimelineTab';
 import { DebrisTab } from './components/DebrisTab';
+import { FloatingPanel } from './components/FloatingPanel';
 import { SatelliteDetailDrawer } from './components/SatelliteDetailDrawer';
 import { QuickTour, shouldShowTour } from './components/QuickTour';
 import { useSatellites } from './hooks/useSatellites';
 import type { FilterState, ConjunctionWarning, DebrisFilterState, DebrisObject, HistoryState, SpacecraftParams, ManeuverResult, SatelliteInfo, SatellitePosition } from './types';
-import { Settings, X, Orbit, Tag, AlertTriangle, Trash2 } from 'lucide-react';
+import { Settings, X, Orbit, Tag, AlertTriangle, Trash2, Satellite, Clock, ExternalLink } from 'lucide-react';
 
 const defaultFilters: FilterState = {
   searchQuery: '',
@@ -34,6 +35,8 @@ const defaultDebrisFilters: DebrisFilterState = {
   showDebrisFields: false,
 };
 
+type PanelType = 'satellites' | 'alerts' | 'timeline' | 'debris';
+
 function App() {
   const { satellites, positions, conjunctions, debris, debrisStats, loading } = useSatellites();
 
@@ -47,6 +50,16 @@ function App() {
   const [activeTab, setActiveTab] = useState<DockTab>('satellites');
   const [isDockExpanded, setIsDockExpanded] = useState(false);
 
+  // Floating panels state
+  const [openPanels, setOpenPanels] = useState<Set<PanelType>>(new Set());
+  const [panelZIndices, setPanelZIndices] = useState<Record<PanelType, number>>({
+    satellites: 100,
+    alerts: 101,
+    timeline: 102,
+    debris: 103,
+  });
+  const nextZIndexRef = useRef(104);
+
   // Modals
   const [showSettings, setShowSettings] = useState(false);
   const [showTour, setShowTour] = useState(false);
@@ -54,7 +67,6 @@ function App() {
   // Check for first-time tour
   useEffect(() => {
     if (shouldShowTour()) {
-      // Small delay to let the app render first
       const timer = setTimeout(() => setShowTour(true), 1000);
       return () => clearTimeout(timer);
     }
@@ -118,54 +130,67 @@ function App() {
     };
   }, []);
 
+  // Panel management
+  const openPanel = useCallback((panel: PanelType) => {
+    setOpenPanels(prev => new Set([...prev, panel]));
+    setPanelZIndices(prev => ({ ...prev, [panel]: nextZIndexRef.current++ }));
+  }, []);
+
+  const closePanel = useCallback((panel: PanelType) => {
+    setOpenPanels(prev => {
+      const next = new Set(prev);
+      next.delete(panel);
+      return next;
+    });
+  }, []);
+
+  const focusPanel = useCallback((panel: PanelType) => {
+    setPanelZIndices(prev => ({ ...prev, [panel]: nextZIndexRef.current++ }));
+  }, []);
+
+  const togglePanel = useCallback((panel: PanelType) => {
+    if (openPanels.has(panel)) {
+      closePanel(panel);
+    } else {
+      openPanel(panel);
+    }
+  }, [openPanels, openPanel, closePanel]);
+
+  // Handle dock tab click - open as floating panel
+  const handleDockTabClick = useCallback((tab: DockTab) => {
+    togglePanel(tab);
+  }, [togglePanel]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
 
       switch (e.key) {
         case '1':
-          setActiveTab('satellites');
-          setIsDockExpanded(true);
+          togglePanel('satellites');
           break;
         case '2':
-          setActiveTab('alerts');
-          setIsDockExpanded(true);
+          togglePanel('alerts');
           break;
         case '3':
-          setActiveTab('timeline');
-          setIsDockExpanded(true);
+          togglePanel('timeline');
           break;
         case '4':
-          setActiveTab('debris');
-          setIsDockExpanded(true);
+          togglePanel('debris');
           break;
         case 'Escape':
           if (filters.selectedSatelliteId !== null) {
             setFilters(prev => ({ ...prev, selectedSatelliteId: null }));
-          } else if (isDockExpanded) {
-            setIsDockExpanded(false);
           } else if (showSettings) {
             setShowSettings(false);
           }
           break;
         case ' ':
           e.preventDefault();
-          if (history.isPlaying) {
-            setHistory(h => ({ ...h, isPlaying: false }));
-          } else {
-            setHistory(h => ({ ...h, isPlaying: true }));
-          }
-          break;
-        case '/':
-          if (e.ctrlKey || e.metaKey) {
-            e.preventDefault();
-            setActiveTab('satellites');
-            setIsDockExpanded(true);
-          }
+          setHistory(h => ({ ...h, isPlaying: !h.isPlaying }));
           break;
         case '?':
           setShowTour(true);
@@ -175,7 +200,7 @@ function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filters.selectedSatelliteId, isDockExpanded, showSettings, history.isPlaying]);
+  }, [filters.selectedSatelliteId, showSettings, togglePanel]);
 
   // Handlers
   const handleFiltersChange = useCallback((update: Partial<FilterState>) => {
@@ -290,6 +315,9 @@ function App() {
         <div className="loading-content">
           <div className="loading-logo">OrbitOps</div>
           <div className="loading-text">Loading satellite data...</div>
+          <div className="loading-bar">
+            <div className="loading-progress" />
+          </div>
         </div>
         <style>{`
           .loading-screen {
@@ -305,63 +333,46 @@ function App() {
             text-align: center;
           }
           .loading-logo {
-            font-size: 28px;
+            font-size: 32px;
             font-weight: 700;
-            margin-bottom: 12px;
+            margin-bottom: 16px;
             color: var(--accent-cyan, #00d4ff);
+            text-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
           }
           .loading-text {
             opacity: 0.6;
             font-size: 14px;
+            margin-bottom: 20px;
+          }
+          .loading-bar {
+            width: 200px;
+            height: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 2px;
+            overflow: hidden;
+          }
+          .loading-progress {
+            width: 30%;
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent-cyan, #00d4ff), var(--accent-green, #00ff88));
+            border-radius: 2px;
+            animation: loadingMove 1.5s ease infinite;
+          }
+          @keyframes loadingMove {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(400%); }
           }
         `}</style>
       </div>
     );
   }
 
-  // Render active tab content
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'satellites':
-        return (
-          <SatellitesTab
-            satellites={satellites}
-            positions={positions}
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-            onSatelliteSelect={handleSatelliteSelect}
-          />
-        );
-      case 'alerts':
-        return (
-          <AlertsTab
-            conjunctions={conjunctions}
-            onConjunctionSelect={handleConjunctionSelect}
-          />
-        );
-      case 'timeline':
-        return (
-          <TimelineTab
-            history={history}
-            onPlay={handleTimelinePlay}
-            onPause={handleTimelinePause}
-            onSeek={handleTimelineSeek}
-            onSpeedChange={handleSpeedChange}
-            onToggleRecording={handleToggleRecording}
-          />
-        );
-      case 'debris':
-        return (
-          <DebrisTab
-            debris={debris}
-            statistics={debrisStats}
-            filters={debrisFilters}
-            onFiltersChange={handleDebrisFiltersChange}
-            onDebrisSelect={handleDebrisSelect}
-            selectedDebrisId={selectedDebrisId}
-          />
-        );
-    }
+  // Panel positions
+  const panelPositions: Record<PanelType, { x: number; y: number }> = {
+    satellites: { x: 20, y: 70 },
+    alerts: { x: 420, y: 70 },
+    timeline: { x: 200, y: 200 },
+    debris: { x: 60, y: 150 },
   };
 
   return (
@@ -386,17 +397,132 @@ function App() {
         theme="dark"
       />
 
-      {/* Command Dock */}
+      {/* Floating Panels */}
+      <FloatingPanel
+        id="satellites"
+        title="Satellites"
+        icon={<Satellite size={18} />}
+        isOpen={openPanels.has('satellites')}
+        onClose={() => closePanel('satellites')}
+        defaultPosition={panelPositions.satellites}
+        defaultSize={{ width: 380, height: 600 }}
+        zIndex={panelZIndices.satellites}
+        onFocus={() => focusPanel('satellites')}
+      >
+        <SatellitesTab
+          satellites={satellites}
+          positions={positions}
+          filters={filters}
+          onFiltersChange={handleFiltersChange}
+          onSatelliteSelect={handleSatelliteSelect}
+        />
+      </FloatingPanel>
+
+      <FloatingPanel
+        id="alerts"
+        title="Conjunction Alerts"
+        icon={<AlertTriangle size={18} />}
+        isOpen={openPanels.has('alerts')}
+        onClose={() => closePanel('alerts')}
+        defaultPosition={panelPositions.alerts}
+        defaultSize={{ width: 400, height: 500 }}
+        zIndex={panelZIndices.alerts}
+        onFocus={() => focusPanel('alerts')}
+      >
+        <AlertsTab
+          conjunctions={conjunctions}
+          onConjunctionSelect={handleConjunctionSelect}
+        />
+      </FloatingPanel>
+
+      <FloatingPanel
+        id="timeline"
+        title="Timeline Replay"
+        icon={<Clock size={18} />}
+        isOpen={openPanels.has('timeline')}
+        onClose={() => closePanel('timeline')}
+        defaultPosition={panelPositions.timeline}
+        defaultSize={{ width: 500, height: 300 }}
+        minSize={{ width: 400, height: 250 }}
+        zIndex={panelZIndices.timeline}
+        onFocus={() => focusPanel('timeline')}
+      >
+        <TimelineTab
+          history={history}
+          onPlay={handleTimelinePlay}
+          onPause={handleTimelinePause}
+          onSeek={handleTimelineSeek}
+          onSpeedChange={handleSpeedChange}
+          onToggleRecording={handleToggleRecording}
+        />
+      </FloatingPanel>
+
+      <FloatingPanel
+        id="debris"
+        title="Space Debris"
+        icon={<Trash2 size={18} />}
+        isOpen={openPanels.has('debris')}
+        onClose={() => closePanel('debris')}
+        defaultPosition={panelPositions.debris}
+        defaultSize={{ width: 380, height: 550 }}
+        zIndex={panelZIndices.debris}
+        onFocus={() => focusPanel('debris')}
+      >
+        <DebrisTab
+          debris={debris}
+          statistics={debrisStats}
+          filters={debrisFilters}
+          onFiltersChange={handleDebrisFiltersChange}
+          onDebrisSelect={handleDebrisSelect}
+          selectedDebrisId={selectedDebrisId}
+        />
+      </FloatingPanel>
+
+      {/* Command Dock - Panel Launcher */}
       <CommandDock
         activeTab={activeTab}
         isExpanded={isDockExpanded}
-        onTabChange={setActiveTab}
+        onTabChange={(tab) => {
+          setActiveTab(tab);
+          handleDockTabClick(tab);
+        }}
         onExpandChange={setIsDockExpanded}
         satelliteCount={satellites.length}
         alertCount={conjunctions.length}
         debrisCount={debris.length}
       >
-        {renderTabContent()}
+        {/* Dock shows quick launch buttons instead of content */}
+        <div className="dock-launcher">
+          <div className="launcher-hint">
+            Click a tab above to open its panel, or use keyboard shortcuts:
+          </div>
+          <div className="launcher-shortcuts">
+            <button onClick={() => togglePanel('satellites')} className={openPanels.has('satellites') ? 'active' : ''}>
+              <Satellite size={16} />
+              <span>Satellites</span>
+              <kbd>1</kbd>
+              {openPanels.has('satellites') && <ExternalLink size={12} className="open-indicator" />}
+            </button>
+            <button onClick={() => togglePanel('alerts')} className={openPanels.has('alerts') ? 'active' : ''}>
+              <AlertTriangle size={16} />
+              <span>Alerts</span>
+              <kbd>2</kbd>
+              {openPanels.has('alerts') && <ExternalLink size={12} className="open-indicator" />}
+            </button>
+            <button onClick={() => togglePanel('timeline')} className={openPanels.has('timeline') ? 'active' : ''}>
+              <Clock size={16} />
+              <span>Timeline</span>
+              <kbd>3</kbd>
+              {openPanels.has('timeline') && <ExternalLink size={12} className="open-indicator" />}
+            </button>
+            <button onClick={() => togglePanel('debris')} className={openPanels.has('debris') ? 'active' : ''}>
+              <Trash2 size={16} />
+              <span>Debris</span>
+              <kbd>4</kbd>
+              {openPanels.has('debris') && <ExternalLink size={12} className="open-indicator" />}
+            </button>
+          </div>
+        </div>
       </CommandDock>
 
       {/* Satellite Detail Drawer */}
@@ -415,7 +541,7 @@ function App() {
       {showSettings && (
         <div className="modal-overlay">
           <div className="modal-backdrop" onClick={() => setShowSettings(false)} />
-          <div className="settings-modal">
+          <div className="settings-modal liquid-glass">
             <div className="modal-header">
               <div className="modal-title">
                 <Settings size={18} />
@@ -488,12 +614,12 @@ function App() {
               <div className="settings-group">
                 <h3>Keyboard Shortcuts</h3>
                 <div className="shortcuts-list">
-                  <div className="shortcut"><kbd>1</kbd> Satellites tab</div>
-                  <div className="shortcut"><kbd>2</kbd> Alerts tab</div>
-                  <div className="shortcut"><kbd>3</kbd> Timeline tab</div>
-                  <div className="shortcut"><kbd>4</kbd> Debris tab</div>
+                  <div className="shortcut"><kbd>1</kbd> Satellites panel</div>
+                  <div className="shortcut"><kbd>2</kbd> Alerts panel</div>
+                  <div className="shortcut"><kbd>3</kbd> Timeline panel</div>
+                  <div className="shortcut"><kbd>4</kbd> Debris panel</div>
                   <div className="shortcut"><kbd>Space</kbd> Play/Pause</div>
-                  <div className="shortcut"><kbd>Esc</kbd> Close/Deselect</div>
+                  <div className="shortcut"><kbd>Esc</kbd> Close drawer</div>
                   <div className="shortcut"><kbd>?</kbd> Show tour</div>
                 </div>
               </div>
@@ -511,14 +637,90 @@ function App() {
           height: 100vh;
           overflow: hidden;
           position: relative;
-          background: #030308;
+          background: var(--bg-space, #030308);
+        }
+
+        /* Dock Launcher Styles */
+        .dock-launcher {
+          padding: 20px 24px;
+        }
+
+        .launcher-hint {
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.4);
+          margin-bottom: 16px;
+          text-align: center;
+        }
+
+        .launcher-shortcuts {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+          flex-wrap: wrap;
+        }
+
+        .launcher-shortcuts button {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 14px 20px;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 14px;
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 13px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          position: relative;
+        }
+
+        .launcher-shortcuts button:hover {
+          background: rgba(255, 255, 255, 0.06);
+          border-color: rgba(255, 255, 255, 0.15);
+          color: white;
+          transform: translateY(-2px);
+          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .launcher-shortcuts button.active {
+          background: rgba(0, 212, 255, 0.1);
+          border-color: rgba(0, 212, 255, 0.3);
+          color: var(--accent-cyan, #00d4ff);
+        }
+
+        .launcher-shortcuts button svg:first-child {
+          opacity: 0.7;
+        }
+
+        .launcher-shortcuts button.active svg:first-child {
+          opacity: 1;
+          filter: drop-shadow(0 0 6px var(--accent-cyan, #00d4ff));
+        }
+
+        .launcher-shortcuts kbd {
+          padding: 4px 8px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 6px;
+          font-family: 'SF Mono', Monaco, monospace;
+          font-size: 10px;
+          color: rgba(255, 255, 255, 0.5);
+          margin-left: auto;
+        }
+
+        .open-indicator {
+          position: absolute;
+          top: 8px;
+          right: 8px;
+          color: var(--accent-cyan, #00d4ff);
+          opacity: 0.7;
         }
 
         /* Modal Styles */
         .modal-overlay {
           position: fixed;
           inset: 0;
-          z-index: 400;
+          z-index: 500;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -528,18 +730,14 @@ function App() {
           position: absolute;
           inset: 0;
           background: rgba(0, 0, 0, 0.6);
-          backdrop-filter: blur(4px);
+          backdrop-filter: blur(8px);
         }
 
         .settings-modal {
           position: relative;
           width: 90%;
-          max-width: 450px;
+          max-width: 480px;
           max-height: 80vh;
-          background: rgba(15, 20, 30, 0.95);
-          backdrop-filter: blur(24px);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 20px;
           overflow: hidden;
           display: flex;
           flex-direction: column;
@@ -549,49 +747,52 @@ function App() {
           display: flex;
           align-items: center;
           justify-content: space-between;
-          padding: 16px 20px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          padding: 20px 24px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.06);
         }
 
         .modal-title {
           display: flex;
           align-items: center;
-          gap: 10px;
-          font-size: 16px;
+          gap: 12px;
+          font-size: 17px;
           font-weight: 600;
           color: white;
         }
 
         .modal-title svg {
           color: var(--accent-cyan, #00d4ff);
+          filter: drop-shadow(0 0 8px rgba(0, 212, 255, 0.5));
         }
 
         .modal-close {
-          width: 32px;
-          height: 32px;
+          width: 36px;
+          height: 36px;
           display: flex;
           align-items: center;
           justify-content: center;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
-          color: rgba(255, 255, 255, 0.6);
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 10px;
+          color: rgba(255, 255, 255, 0.5);
           cursor: pointer;
+          transition: all 0.15s ease;
         }
 
         .modal-close:hover {
-          background: rgba(255, 255, 255, 0.1);
-          color: white;
+          background: rgba(255, 68, 68, 0.1);
+          border-color: rgba(255, 68, 68, 0.3);
+          color: var(--accent-red, #ff3b3b);
         }
 
         .modal-body {
           flex: 1;
           overflow-y: auto;
-          padding: 20px;
+          padding: 24px;
         }
 
         .settings-group {
-          margin-bottom: 24px;
+          margin-bottom: 28px;
         }
 
         .settings-group:last-child {
@@ -599,18 +800,18 @@ function App() {
         }
 
         .settings-group h3 {
-          font-size: 12px;
-          font-weight: 600;
-          color: rgba(255, 255, 255, 0.5);
+          font-size: 11px;
+          font-weight: 700;
+          color: rgba(255, 255, 255, 0.4);
           text-transform: uppercase;
-          letter-spacing: 0.5px;
-          margin: 0 0 12px;
+          letter-spacing: 1px;
+          margin: 0 0 14px;
         }
 
         .settings-list {
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 14px;
         }
 
         .setting-toggle {
@@ -622,24 +823,30 @@ function App() {
         .setting-toggle span {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 12px;
           font-size: 13px;
           color: rgba(255, 255, 255, 0.8);
         }
 
+        .setting-toggle span svg {
+          opacity: 0.6;
+        }
+
         .toggle {
-          width: 44px;
-          height: 24px;
-          border-radius: 12px;
-          background: rgba(255, 255, 255, 0.1);
-          border: none;
+          width: 48px;
+          height: 26px;
+          border-radius: 13px;
+          background: rgba(255, 255, 255, 0.08);
+          border: 1px solid rgba(255, 255, 255, 0.1);
           cursor: pointer;
           position: relative;
-          transition: background 0.2s ease;
+          transition: all 0.2s ease;
         }
 
         .toggle.active {
-          background: var(--accent-cyan, #00d4ff);
+          background: rgba(0, 212, 255, 0.3);
+          border-color: rgba(0, 212, 255, 0.5);
+          box-shadow: 0 0 20px rgba(0, 212, 255, 0.2);
         }
 
         .toggle-knob {
@@ -650,52 +857,54 @@ function App() {
           height: 20px;
           border-radius: 50%;
           background: white;
-          box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
           transition: transform 0.2s ease;
         }
 
         .toggle.active .toggle-knob {
-          transform: translateX(20px);
+          transform: translateX(22px);
+          box-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
         }
 
         .setting-slider {
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 10px;
         }
 
         .setting-slider label {
           font-size: 13px;
-          color: rgba(255, 255, 255, 0.8);
+          color: rgba(255, 255, 255, 0.7);
         }
 
         .setting-slider input {
           width: 100%;
           accent-color: var(--accent-cyan, #00d4ff);
+          height: 6px;
         }
 
         .shortcuts-list {
           display: grid;
           grid-template-columns: repeat(2, 1fr);
-          gap: 8px;
+          gap: 10px;
         }
 
         .shortcut {
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 10px;
           font-size: 12px;
           color: rgba(255, 255, 255, 0.6);
         }
 
         .shortcut kbd {
-          padding: 3px 8px;
-          background: rgba(255, 255, 255, 0.1);
-          border: 1px solid rgba(255, 255, 255, 0.15);
-          border-radius: 6px;
+          padding: 4px 10px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 8px;
           font-family: 'SF Mono', Monaco, monospace;
           font-size: 11px;
-          color: rgba(255, 255, 255, 0.8);
+          color: rgba(255, 255, 255, 0.7);
         }
       `}</style>
     </div>

@@ -80,10 +80,8 @@ function SatellitesTabComponent({
     });
   }, [satellites, filters.searchQuery, filters.minInclination, filters.maxInclination, filters.orbitType]);
 
-  const displayedSatellites = useMemo(() =>
-    filteredSatellites.slice(0, 100),
-    [filteredSatellites]
-  );
+  // Show all satellites - virtualized rendering handles performance
+  const displayedSatellites = filteredSatellites;
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     onFiltersChange({ searchQuery: e.target.value });
@@ -184,10 +182,8 @@ function SatellitesTabComponent({
 
       {/* Results Header */}
       <div className="tab-results-header">
-        <span>{filteredSatellites.length.toLocaleString()} satellites</span>
-        {filteredSatellites.length > 100 && (
-          <span className="showing-hint">showing first 100</span>
-        )}
+        <span className="count-badge">{filteredSatellites.length.toLocaleString()}</span>
+        <span>satellites tracked</span>
       </div>
 
       {/* Satellite List */}
@@ -211,8 +207,8 @@ function SatellitesTabComponent({
           display: flex;
           flex-direction: column;
           height: 100%;
-          padding: 12px 16px;
-          gap: 10px;
+          padding: 16px;
+          gap: 12px;
         }
 
         .tab-search {
@@ -222,31 +218,35 @@ function SatellitesTabComponent({
 
         .search-icon {
           position: absolute;
-          left: 12px;
+          left: 14px;
           top: 50%;
           transform: translateY(-50%);
-          color: rgba(255, 255, 255, 0.4);
+          color: rgba(255, 255, 255, 0.3);
+          filter: drop-shadow(0 0 4px rgba(0, 212, 255, 0.3));
         }
 
         .search-input {
           width: 100%;
-          padding: 10px 12px 10px 36px;
-          background: rgba(255, 255, 255, 0.05);
+          padding: 12px 14px 12px 42px;
+          background: rgba(255, 255, 255, 0.03);
           border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 10px;
+          border-radius: 14px;
           color: white;
           font-size: 13px;
           outline: none;
-          transition: all 0.15s ease;
+          transition: all 0.2s ease;
         }
 
         .search-input:focus {
           border-color: rgba(0, 212, 255, 0.5);
-          background: rgba(255, 255, 255, 0.08);
+          background: rgba(255, 255, 255, 0.05);
+          box-shadow:
+            0 0 0 3px rgba(0, 212, 255, 0.1),
+            inset 0 0 20px rgba(0, 212, 255, 0.03);
         }
 
         .search-input::placeholder {
-          color: rgba(255, 255, 255, 0.35);
+          color: rgba(255, 255, 255, 0.3);
         }
 
         .tab-filters-row {
@@ -265,32 +265,41 @@ function SatellitesTabComponent({
         .filter-btn {
           display: flex;
           align-items: center;
-          gap: 5px;
-          padding: 6px 10px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 8px;
+          gap: 6px;
+          padding: 8px 12px;
+          background: rgba(255, 255, 255, 0.02);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 10px;
           color: rgba(255, 255, 255, 0.6);
           font-size: 11px;
+          font-weight: 500;
           cursor: pointer;
           transition: all 0.15s ease;
         }
 
         .filter-btn:hover {
-          background: rgba(255, 255, 255, 0.1);
-          color: rgba(255, 255, 255, 0.8);
+          background: rgba(255, 255, 255, 0.06);
+          border-color: rgba(255, 255, 255, 0.15);
+          color: rgba(255, 255, 255, 0.9);
+          transform: translateY(-1px);
         }
 
         .filter-btn.active {
-          background: rgba(0, 212, 255, 0.15);
-          border-color: rgba(0, 212, 255, 0.4);
+          background: rgba(0, 212, 255, 0.1);
+          border-color: rgba(0, 212, 255, 0.35);
           color: var(--accent-cyan, #00d4ff);
+          box-shadow: 0 0 20px rgba(0, 212, 255, 0.1);
+        }
+
+        .filter-btn.active svg {
+          filter: drop-shadow(0 0 6px var(--accent-cyan, #00d4ff));
         }
 
         .filter-btn.orbit-type {
-          padding: 5px 8px;
+          padding: 6px 10px;
           font-size: 10px;
-          font-weight: 600;
+          font-weight: 700;
+          letter-spacing: 0.5px;
         }
 
         .filter-toggle {
@@ -298,16 +307,17 @@ function SatellitesTabComponent({
           display: flex;
           align-items: center;
           gap: 4px;
-          padding: 5px 8px;
+          padding: 6px 10px;
           background: transparent;
           border: none;
-          color: rgba(255, 255, 255, 0.5);
+          color: rgba(255, 255, 255, 0.4);
           font-size: 11px;
           cursor: pointer;
+          transition: all 0.15s ease;
         }
 
         .filter-toggle:hover {
-          color: rgba(255, 255, 255, 0.8);
+          color: var(--accent-cyan, #00d4ff);
         }
 
         .filter-toggle svg {
@@ -315,9 +325,10 @@ function SatellitesTabComponent({
         }
 
         .advanced-filters {
-          padding: 10px 12px;
-          background: rgba(0, 0, 0, 0.2);
-          border-radius: 8px;
+          padding: 12px 14px;
+          background: rgba(0, 0, 0, 0.3);
+          border: 1px solid rgba(255, 255, 255, 0.05);
+          border-radius: 12px;
           flex-shrink: 0;
         }
 
@@ -325,7 +336,7 @@ function SatellitesTabComponent({
           display: block;
           font-size: 11px;
           color: rgba(255, 255, 255, 0.5);
-          margin-bottom: 6px;
+          margin-bottom: 8px;
         }
 
         .filter-slider input {
@@ -337,13 +348,17 @@ function SatellitesTabComponent({
           display: flex;
           align-items: center;
           gap: 8px;
-          font-size: 11px;
+          font-size: 12px;
           color: rgba(255, 255, 255, 0.5);
           flex-shrink: 0;
+          padding: 0 4px;
         }
 
-        .showing-hint {
-          color: rgba(255, 255, 255, 0.35);
+        .count-badge {
+          color: var(--accent-cyan, #00d4ff);
+          font-weight: 700;
+          font-size: 14px;
+          text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
         }
 
         .tab-list {
@@ -351,29 +366,51 @@ function SatellitesTabComponent({
           overflow-y: auto;
           display: flex;
           flex-direction: column;
-          gap: 2px;
+          gap: 4px;
+          padding-right: 4px;
+        }
+
+        .tab-list::-webkit-scrollbar {
+          width: 6px;
+        }
+
+        .tab-list::-webkit-scrollbar-track {
+          background: transparent;
+        }
+
+        .tab-list::-webkit-scrollbar-thumb {
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 3px;
+        }
+
+        .tab-list::-webkit-scrollbar-thumb:hover {
+          background: rgba(255, 255, 255, 0.2);
         }
 
         .satellite-list-item {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 10px 12px;
-          background: rgba(255, 255, 255, 0.03);
+          padding: 12px 14px;
+          background: transparent;
           border: 1px solid transparent;
-          border-radius: 8px;
+          border-radius: 12px;
           cursor: pointer;
           transition: all 0.15s ease;
           text-align: left;
         }
 
         .satellite-list-item:hover {
-          background: rgba(255, 255, 255, 0.06);
+          background: rgba(255, 255, 255, 0.04);
+          border-color: rgba(255, 255, 255, 0.06);
         }
 
         .satellite-list-item.selected {
-          background: rgba(0, 212, 255, 0.1);
-          border-color: rgba(0, 212, 255, 0.3);
+          background: rgba(0, 212, 255, 0.08);
+          border-color: rgba(0, 212, 255, 0.25);
+          box-shadow:
+            inset 0 0 30px rgba(0, 212, 255, 0.05),
+            0 0 20px rgba(0, 212, 255, 0.08);
         }
 
         .sat-info {
@@ -383,17 +420,20 @@ function SatellitesTabComponent({
 
         .sat-name {
           font-size: 13px;
-          font-weight: 500;
-          color: rgba(255, 255, 255, 0.9);
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.95);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
+          letter-spacing: -0.01em;
         }
 
         .sat-designator {
-          font-size: 11px;
-          color: rgba(255, 255, 255, 0.4);
-          margin-top: 2px;
+          font-size: 10px;
+          color: rgba(255, 255, 255, 0.35);
+          font-family: 'SF Mono', Monaco, monospace;
+          margin-top: 3px;
+          letter-spacing: 0.02em;
         }
 
         .sat-metrics {
@@ -402,22 +442,23 @@ function SatellitesTabComponent({
         }
 
         .sat-altitude {
-          font-size: 12px;
+          font-size: 13px;
+          font-weight: 700;
           color: var(--accent-cyan, #00d4ff);
-          font-weight: 500;
+          text-shadow: 0 0 12px rgba(0, 212, 255, 0.4);
         }
 
         .sat-inclination {
           font-size: 10px;
-          color: rgba(255, 255, 255, 0.4);
-          margin-top: 2px;
+          color: rgba(255, 255, 255, 0.35);
+          margin-top: 3px;
         }
 
         .empty-state {
-          padding: 40px 20px;
+          padding: 60px 20px;
           text-align: center;
-          color: rgba(255, 255, 255, 0.4);
-          font-size: 13px;
+          color: rgba(255, 255, 255, 0.3);
+          font-size: 14px;
         }
       `}</style>
     </div>

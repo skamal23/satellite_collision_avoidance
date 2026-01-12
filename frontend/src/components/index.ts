@@ -1,10 +1,11 @@
 // Core visualization
 export { GlobeViewer } from './GlobeViewer';
 
-// New Command Center UI
+// Command Center UI
 export { TopBar } from './TopBar';
 export { CommandDock } from './CommandDock';
 export type { DockTab } from './CommandDock';
+export { FloatingPanel } from './FloatingPanel';
 export { SatellitesTab } from './SatellitesTab';
 export { AlertsTab } from './AlertsTab';
 export { TimelineTab } from './TimelineTab';
@@ -12,7 +13,7 @@ export { DebrisTab } from './DebrisTab';
 export { SatelliteDetailDrawer } from './SatelliteDetailDrawer';
 export { QuickTour, shouldShowTour } from './QuickTour';
 
-// Legacy components (can be removed after migration verified)
+// Legacy components (kept for backwards compatibility)
 export { SatellitePanel } from './SatellitePanel';
 export { ConjunctionPanel } from './ConjunctionPanel';
 export { StatusBar } from './StatusBar';

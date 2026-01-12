@@ -200,7 +200,7 @@ function DebrisTabComponent({
 
       {/* Debris List */}
       <div className="tab-list">
-        {filteredDebris.slice(0, 50).map((d) => (
+        {filteredDebris.map((d) => (
           <DebrisItem
             key={d.id}
             debris={d}
@@ -208,11 +208,6 @@ function DebrisTabComponent({
             onClick={() => onDebrisSelect(selectedDebrisId === d.id ? null : d)}
           />
         ))}
-        {filteredDebris.length > 50 && (
-          <div className="more-indicator">
-            +{(filteredDebris.length - 50).toLocaleString()} more objects
-          </div>
-        )}
         {filteredDebris.length === 0 && (
           <div className="empty-state">No debris matches filters</div>
         )}
