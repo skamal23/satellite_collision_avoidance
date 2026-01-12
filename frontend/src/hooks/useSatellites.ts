@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { SatellitePosition, ConjunctionWarning, SatelliteInfo } from '../types';
 
-// Mock data for development - will be replaced with gRPC calls
+// Pre-compute satellite data once
 function generateMockSatellites(count: number): SatelliteInfo[] {
   const satellites: SatelliteInfo[] = [];
   const names = [
@@ -24,37 +24,59 @@ function generateMockSatellites(count: number): SatelliteInfo[] {
   return satellites;
 }
 
+// Reusable position array to avoid GC pressure
+let positionsBuffer: SatellitePosition[] = [];
+
 function generateMockPositions(satellites: SatelliteInfo[], time: number): SatellitePosition[] {
-  return satellites.map((sat, i) => {
-    const earthRadius = 6371;
-    const altitude = 400 + (i % 20) * 100; // Deterministic altitudes for stability
+  const len = satellites.length;
+  
+  // Resize buffer if needed
+  if (positionsBuffer.length !== len) {
+    positionsBuffer = new Array(len);
+    for (let i = 0; i < len; i++) {
+      positionsBuffer[i] = {
+        id: 0,
+        name: '',
+        position: { x: 0, y: 0, z: 0 },
+        velocity: { x: 0, y: 0, z: 0 },
+        timestamp: 0,
+      };
+    }
+  }
+  
+  const earthRadius = 6371;
+  const twoPi = 2 * Math.PI;
+  const now = Date.now() / 1000;
+  
+  for (let i = 0; i < len; i++) {
+    const sat = satellites[i];
+    const altitude = 400 + (i % 20) * 100;
     const r = earthRadius + altitude;
     
-    // Orbital motion - each satellite has different speed based on altitude
-    const orbitalPeriod = 90 + (altitude / 100) * 5; // minutes
-    const angularVelocity = (2 * Math.PI) / (orbitalPeriod * 60); // rad/s
-    const theta = angularVelocity * time + (i * 2 * Math.PI) / satellites.length;
+    const orbitalPeriod = 90 + (altitude / 100) * 5;
+    const angularVelocity = twoPi / (orbitalPeriod * 60);
+    const theta = angularVelocity * time + (i * twoPi) / len;
     
-    // Inclination affects the z-component
     const incl = sat.inclination * Math.PI / 180;
     const phi = incl * Math.sin(theta);
+    const cosTheta = Math.cos(theta);
+    const sinTheta = Math.sin(theta);
+    const cosPhi = Math.cos(phi);
+    const sinPhi = Math.sin(phi);
     
-    return {
-      id: sat.id,
-      name: sat.name,
-      position: {
-        x: r * Math.cos(theta) * Math.cos(phi),
-        y: r * Math.sin(theta) * Math.cos(phi),
-        z: r * Math.sin(phi),
-      },
-      velocity: {
-        x: -7.5 * Math.sin(theta),
-        y: 7.5 * Math.cos(theta),
-        z: 0.5 * Math.cos(phi),
-      },
-      timestamp: Date.now() / 1000,
-    };
-  });
+    const pos = positionsBuffer[i];
+    pos.id = sat.id;
+    pos.name = sat.name;
+    pos.position.x = r * cosTheta * cosPhi;
+    pos.position.y = r * sinTheta * cosPhi;
+    pos.position.z = r * sinPhi;
+    pos.velocity.x = -7.5 * sinTheta;
+    pos.velocity.y = 7.5 * cosTheta;
+    pos.velocity.z = 0.5 * cosPhi;
+    pos.timestamp = now;
+  }
+  
+  return positionsBuffer;
 }
 
 function generateMockConjunctions(): ConjunctionWarning[] {
@@ -99,42 +121,36 @@ export function useSatellites() {
   const [loading, setLoading] = useState(true);
   const [time, setTime] = useState(0);
   const startTimeRef = useRef(Date.now());
+  const satellitesRef = useRef<SatelliteInfo[]>([]);
 
-  // Initialize with mock data
+  // Initialize with mock data - only once
   useEffect(() => {
-    const mockSatellites = generateMockSatellites(100); // Reduced from 150 for performance
+    const mockSatellites = generateMockSatellites(100);
+    satellitesRef.current = mockSatellites;
     setSatellites(mockSatellites);
-    setPositions(generateMockPositions(mockSatellites, 0));
+    setPositions([...generateMockPositions(mockSatellites, 0)]);
     setConjunctions(generateMockConjunctions());
     setLoading(false);
   }, []);
 
-  // Update positions over time (simulation) - throttled for performance
+  // Update positions using setInterval instead of RAF (more efficient for throttled updates)
   useEffect(() => {
-    if (satellites.length === 0) return;
+    if (satellitesRef.current.length === 0) return;
     
-    let animationId: number;
-    let lastUpdate = 0;
-    const updateInterval = 2000; // Update every 2 seconds instead of every frame
+    const updateInterval = 2000; // 2 seconds
     
-    const update = (timestamp: number) => {
-      if (timestamp - lastUpdate >= updateInterval) {
-        const elapsed = (Date.now() - startTimeRef.current) / 1000;
-        setTime(Math.floor(elapsed));
-        setPositions(generateMockPositions(satellites, elapsed));
-        lastUpdate = timestamp;
-      }
-      animationId = requestAnimationFrame(update);
-    };
-    
-    animationId = requestAnimationFrame(update);
+    const intervalId = setInterval(() => {
+      const elapsed = (Date.now() - startTimeRef.current) / 1000;
+      setTime(Math.floor(elapsed));
+      // Create new array reference to trigger React update
+      setPositions([...generateMockPositions(satellitesRef.current, elapsed)]);
+    }, updateInterval);
 
-    return () => cancelAnimationFrame(animationId);
-  }, [satellites]);
+    return () => clearInterval(intervalId);
+  }, []);
 
   const refreshData = useCallback(async () => {
     setLoading(true);
-    // TODO: Fetch from gRPC backend
     await new Promise(r => setTimeout(r, 500));
     setLoading(false);
   }, []);

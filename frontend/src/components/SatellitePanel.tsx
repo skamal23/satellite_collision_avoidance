@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, memo, useCallback } from 'react';
 import { Search, ChevronDown, Orbit, Eye, EyeOff } from 'lucide-react';
 import { SidebarPanel } from './SidebarPanel';
 import type { SatelliteInfo, SatellitePosition, FilterState } from '../types';
@@ -11,7 +11,40 @@ interface SatellitePanelProps {
   onSatelliteSelect: (id: number | null) => void;
 }
 
-export function SatellitePanel({
+// Memoized satellite item to prevent re-renders
+const SatelliteItem = memo(function SatelliteItem({
+  sat,
+  altitude,
+  isSelected,
+  onSelect,
+}: {
+  sat: SatelliteInfo;
+  altitude: number | null;
+  isSelected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      onClick={onSelect}
+      className={`satellite-item ${isSelected ? 'selected' : ''}`}
+    >
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div className="sat-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {sat.name}
+        </div>
+        <div className="sat-designator">{sat.intlDesignator}</div>
+      </div>
+      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+        <div className="sat-altitude">
+          {altitude !== null ? `${altitude.toFixed(0)} km` : '—'}
+        </div>
+        <div className="sat-inclination">{sat.inclination.toFixed(1)}°</div>
+      </div>
+    </button>
+  );
+});
+
+function SatellitePanelComponent({
   satellites,
   positions,
   filters,
@@ -19,6 +52,16 @@ export function SatellitePanel({
   onSatelliteSelect,
 }: SatellitePanelProps) {
   const [showFilters, setShowFilters] = useState(false);
+
+  // Create a Map for O(1) altitude lookups
+  const altitudeMap = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const pos of positions) {
+      const r = Math.sqrt(pos.position.x ** 2 + pos.position.y ** 2 + pos.position.z ** 2);
+      map.set(pos.id, r - 6371);
+    }
+    return map;
+  }, [positions]);
 
   const filteredSatellites = useMemo(() => {
     return satellites.filter(sat => {
@@ -40,14 +83,37 @@ export function SatellitePanel({
       }
       return true;
     });
-  }, [satellites, filters]);
+  }, [satellites, filters.searchQuery, filters.minInclination, filters.maxInclination, filters.orbitType]);
 
-  const getAltitude = (satId: number) => {
-    const pos = positions.find(p => p.id === satId);
-    if (!pos) return null;
-    const r = Math.sqrt(pos.position.x ** 2 + pos.position.y ** 2 + pos.position.z ** 2);
-    return r - 6371;
-  };
+  // Memoize displayed satellites (limited to 50)
+  const displayedSatellites = useMemo(() => 
+    filteredSatellites.slice(0, 50),
+    [filteredSatellites]
+  );
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    onFiltersChange({ searchQuery: e.target.value });
+  }, [onFiltersChange]);
+
+  const handleToggleOrbits = useCallback(() => {
+    onFiltersChange({ showOrbits: !filters.showOrbits });
+  }, [onFiltersChange, filters.showOrbits]);
+
+  const handleToggleLabels = useCallback(() => {
+    onFiltersChange({ showLabels: !filters.showLabels });
+  }, [onFiltersChange, filters.showLabels]);
+
+  const handleOrbitTypeChange = useCallback((type: 'all' | 'leo' | 'meo' | 'geo') => {
+    onFiltersChange({ orbitType: type });
+  }, [onFiltersChange]);
+
+  const handleInclinationChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    onFiltersChange({ maxInclination: Number(e.target.value) });
+  }, [onFiltersChange]);
+
+  const handleSatelliteSelect = useCallback((sat: SatelliteInfo) => {
+    onSatelliteSelect(filters.selectedSatelliteId === sat.id ? null : sat.id);
+  }, [onSatelliteSelect, filters.selectedSatelliteId]);
 
   return (
     <SidebarPanel
@@ -73,7 +139,7 @@ export function SatellitePanel({
           type="text"
           placeholder="Search satellites..."
           value={filters.searchQuery}
-          onChange={(e) => onFiltersChange({ searchQuery: e.target.value })}
+          onChange={handleSearchChange}
           className="glass-input"
         />
       </div>
@@ -81,7 +147,7 @@ export function SatellitePanel({
       {/* Quick Filters */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
         <button
-          onClick={() => onFiltersChange({ showOrbits: !filters.showOrbits })}
+          onClick={handleToggleOrbits}
           className={`glass-btn ${filters.showOrbits ? 'active' : ''}`}
           style={{ flex: 1 }}
         >
@@ -89,7 +155,7 @@ export function SatellitePanel({
           Orbits
         </button>
         <button
-          onClick={() => onFiltersChange({ showLabels: !filters.showLabels })}
+          onClick={handleToggleLabels}
           className={`glass-btn ${filters.showLabels ? 'active' : ''}`}
           style={{ flex: 1 }}
         >
@@ -129,7 +195,7 @@ export function SatellitePanel({
               {(['all', 'leo', 'meo', 'geo'] as const).map(type => (
                 <button
                   key={type}
-                  onClick={() => onFiltersChange({ orbitType: type })}
+                  onClick={() => handleOrbitTypeChange(type)}
                   className={`glass-btn ${filters.orbitType === type ? 'active' : ''}`}
                   style={{ flex: 1, padding: '5px 8px', fontSize: 10 }}
                 >
@@ -147,7 +213,7 @@ export function SatellitePanel({
               min="0"
               max="180"
               value={filters.maxInclination}
-              onChange={(e) => onFiltersChange({ maxInclination: Number(e.target.value) })}
+              onChange={handleInclinationChange}
               style={{ width: '100%', accentColor: 'var(--accent-cyan)' }}
             />
           </div>
@@ -161,31 +227,15 @@ export function SatellitePanel({
 
       {/* Satellite List */}
       <div style={{ display: 'flex', flexDirection: 'column' }}>
-        {filteredSatellites.slice(0, 50).map((sat) => {
-          const altitude = getAltitude(sat.id);
-          const isSelected = filters.selectedSatelliteId === sat.id;
-
-          return (
-            <button
-              key={sat.id}
-              onClick={() => onSatelliteSelect(isSelected ? null : sat.id)}
-              className={`satellite-item ${isSelected ? 'selected' : ''}`}
-            >
-              <div style={{ minWidth: 0, flex: 1 }}>
-                <div className="sat-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {sat.name}
-                </div>
-                <div className="sat-designator">{sat.intlDesignator}</div>
-              </div>
-              <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                <div className="sat-altitude">
-                  {altitude ? `${altitude.toFixed(0)} km` : '—'}
-                </div>
-                <div className="sat-inclination">{sat.inclination.toFixed(1)}°</div>
-              </div>
-            </button>
-          );
-        })}
+        {displayedSatellites.map((sat) => (
+          <SatelliteItem
+            key={sat.id}
+            sat={sat}
+            altitude={altitudeMap.get(sat.id) ?? null}
+            isSelected={filters.selectedSatelliteId === sat.id}
+            onSelect={() => handleSatelliteSelect(sat)}
+          />
+        ))}
       </div>
 
       {filteredSatellites.length > 50 && (
@@ -196,3 +246,5 @@ export function SatellitePanel({
     </SidebarPanel>
   );
 }
+
+export const SatellitePanel = memo(SatellitePanelComponent);

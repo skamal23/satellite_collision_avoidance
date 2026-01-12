@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { SatellitePanel, ConjunctionPanel, GlobeViewer, StatusBar } from './components';
 import { useSatellites } from './hooks/useSatellites';
 import type { FilterState, ConjunctionWarning } from './types';
@@ -24,32 +24,38 @@ function App() {
   const frameTimesRef = useRef<number[]>([]);
   const lastFrameTimeRef = useRef(performance.now());
   const animationFrameIdRef = useRef<number | null>(null);
+  const fpsUpdateCounterRef = useRef(0);
 
-  // FPS calculation
-  const animate = useCallback(() => {
-    const now = performance.now();
-    const delta = now - lastFrameTimeRef.current;
-    lastFrameTimeRef.current = now;
-    
-    frameTimesRef.current.push(delta);
-    if (frameTimesRef.current.length > 30) {
-      frameTimesRef.current.shift();
-    }
-    
-    const avgDelta = frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length;
-    setFps(1000 / avgDelta);
-    
-    animationFrameIdRef.current = requestAnimationFrame(animate);
-  }, []);
-
+  // FPS calculation - only update state every 10 frames to reduce re-renders
   useEffect(() => {
+    const animate = () => {
+      const now = performance.now();
+      const delta = now - lastFrameTimeRef.current;
+      lastFrameTimeRef.current = now;
+      
+      frameTimesRef.current.push(delta);
+      if (frameTimesRef.current.length > 30) {
+        frameTimesRef.current.shift();
+      }
+      
+      // Only update FPS state every 10 frames
+      fpsUpdateCounterRef.current++;
+      if (fpsUpdateCounterRef.current >= 10) {
+        fpsUpdateCounterRef.current = 0;
+        const avgDelta = frameTimesRef.current.reduce((a, b) => a + b, 0) / frameTimesRef.current.length;
+        setFps(Math.round(1000 / avgDelta));
+      }
+      
+      animationFrameIdRef.current = requestAnimationFrame(animate);
+    };
+    
     animationFrameIdRef.current = requestAnimationFrame(animate);
     return () => {
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
     };
-  }, [animate]);
+  }, []);
 
   const handleFiltersChange = useCallback((update: Partial<FilterState>) => {
     setFilters(prev => ({ ...prev, ...update }));

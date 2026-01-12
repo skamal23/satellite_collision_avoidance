@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import { Clock, Timer, Cpu, RefreshCw, Settings, Satellite, AlertTriangle } from 'lucide-react';
 
 interface StatusBarProps {
@@ -10,7 +10,7 @@ interface StatusBarProps {
   loading: boolean;
 }
 
-export function StatusBar({ time, fps, satelliteCount, conjunctionCount, onRefresh, loading }: StatusBarProps) {
+function StatusBarComponent({ time, fps, satelliteCount, conjunctionCount, onRefresh, loading }: StatusBarProps) {
   const [utcTime, setUtcTime] = useState(new Date());
 
   useEffect(() => {
@@ -26,7 +26,7 @@ export function StatusBar({ time, fps, satelliteCount, conjunctionCount, onRefre
   };
 
   // Pad FPS to prevent layout shift
-  const fpsDisplay = Math.round(fps).toString().padStart(2, ' ');
+  const fpsDisplay = fps.toString().padStart(2, ' ');
 
   return (
     <footer className="status-bar liquid-glass">
@@ -89,3 +89,5 @@ export function StatusBar({ time, fps, satelliteCount, conjunctionCount, onRefre
     </footer>
   );
 }
+
+export const StatusBar = memo(StatusBarComponent);
