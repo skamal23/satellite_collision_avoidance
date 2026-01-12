@@ -198,6 +198,13 @@ message TimeRange {
   double step_seconds = 3;
 }
 
+message OrbitPathRequest {
+  int32 satellite_id = 1;
+  double start_time = 2;   // Unix timestamp
+  double end_time = 3;
+  double step_seconds = 4;
+}
+
 message ScreeningParams {
   double threshold_km = 1;           // Conjunction threshold (default 10km)
   double start_time = 2;
@@ -251,7 +258,7 @@ service OrbitOps {
   rpc GetCatalog(CatalogRequest) returns (CatalogResponse);
   
   // Get a single satellite's full orbit path
-  rpc GetOrbitPath(TimeRange) returns (OrbitPath);
+  rpc GetOrbitPath(OrbitPathRequest) returns (OrbitPath);
   
   // === Phase 6 RPCs ===
   
