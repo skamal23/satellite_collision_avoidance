@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Search, Orbit, Eye, EyeOff, ChevronDown } from 'lucide-react';
-import { DraggablePanel } from './DraggablePanel';
+import { Search, ChevronDown, Orbit, Eye, EyeOff } from 'lucide-react';
+import { SidebarPanel } from './SidebarPanel';
 import type { SatelliteInfo, SatellitePosition, FilterState } from '../types';
 
 interface SatellitePanelProps {
@@ -24,7 +24,7 @@ export function SatellitePanel({
     return satellites.filter(sat => {
       if (filters.searchQuery) {
         const query = filters.searchQuery.toLowerCase();
-        if (!sat.name.toLowerCase().includes(query) && 
+        if (!sat.name.toLowerCase().includes(query) &&
             !sat.intlDesignator.toLowerCase().includes(query)) {
           return false;
         }
@@ -50,39 +50,47 @@ export function SatellitePanel({
   };
 
   return (
-    <DraggablePanel
+    <SidebarPanel
       title="Satellites"
-      icon={<Orbit size={16} style={{ color: 'var(--accent-primary)' }} />}
-      defaultPosition={{ x: 16, y: 80 }}
+      icon={<Orbit size={16} />}
+      side="left"
+      defaultPosition={{ x: 20, y: 100 }}
     >
       {/* Search */}
-      <div className="relative mb-3">
+      <div style={{ position: 'relative', marginBottom: 10 }}>
         <Search 
           size={14} 
-          className="absolute left-3 top-1/2 -translate-y-1/2" 
-          style={{ color: 'var(--text-muted)' }} 
+          style={{ 
+            position: 'absolute', 
+            left: 12, 
+            top: '50%', 
+            transform: 'translateY(-50%)',
+            color: 'var(--text-muted)'
+          }} 
         />
         <input
           type="text"
           placeholder="Search satellites..."
           value={filters.searchQuery}
           onChange={(e) => onFiltersChange({ searchQuery: e.target.value })}
-          className="glass-input pl-9 text-sm"
+          className="glass-input"
         />
       </div>
 
       {/* Quick Filters */}
-      <div className="flex gap-2 mb-3">
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
         <button
           onClick={() => onFiltersChange({ showOrbits: !filters.showOrbits })}
-          className={`glass-btn flex-1 text-xs ${filters.showOrbits ? 'active' : ''}`}
+          className={`glass-btn ${filters.showOrbits ? 'active' : ''}`}
+          style={{ flex: 1 }}
         >
           <Orbit size={12} />
           Orbits
         </button>
         <button
           onClick={() => onFiltersChange({ showLabels: !filters.showLabels })}
-          className={`glass-btn flex-1 text-xs ${filters.showLabels ? 'active' : ''}`}
+          className={`glass-btn ${filters.showLabels ? 'active' : ''}`}
+          style={{ flex: 1 }}
         >
           {filters.showLabels ? <Eye size={12} /> : <EyeOff size={12} />}
           Labels
@@ -92,32 +100,37 @@ export function SatellitePanel({
       {/* Advanced Filters Toggle */}
       <button
         onClick={() => setShowFilters(!showFilters)}
-        className="flex items-center gap-1 text-xs mb-3"
-        style={{ color: 'var(--text-muted)' }}
+        style={{
+          background: 'none',
+          border: 'none',
+          color: 'var(--text-muted)',
+          fontSize: 11,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          marginBottom: 8,
+          padding: 0,
+        }}
       >
         {showFilters ? 'Hide' : 'Show'} filters
-        <ChevronDown 
-          size={12} 
-          style={{ 
-            transform: showFilters ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform 0.2s ease'
-          }} 
-        />
+        <ChevronDown size={12} style={{ transform: showFilters ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
       </button>
 
       {/* Advanced Filters */}
       {showFilters && (
-        <div className="space-y-3 mb-3 p-3 rounded-xl" style={{ background: 'var(--glass-bg)' }}>
-          <div>
-            <label className="text-xs mb-2 block" style={{ color: 'var(--text-muted)' }}>
+        <div style={{ marginBottom: 12, padding: 10, background: 'rgba(0,0,0,0.2)', borderRadius: 10 }}>
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
               Orbit Type
             </label>
-            <div className="flex gap-1">
+            <div style={{ display: 'flex', gap: 4 }}>
               {(['all', 'leo', 'meo', 'geo'] as const).map(type => (
                 <button
                   key={type}
                   onClick={() => onFiltersChange({ orbitType: type })}
-                  className={`glass-btn text-xs py-1.5 px-3 flex-1 ${filters.orbitType === type ? 'active' : ''}`}
+                  className={`glass-btn ${filters.orbitType === type ? 'active' : ''}`}
+                  style={{ flex: 1, padding: '5px 8px', fontSize: 10 }}
                 >
                   {type.toUpperCase()}
                 </button>
@@ -125,7 +138,7 @@ export function SatellitePanel({
             </div>
           </div>
           <div>
-            <label className="text-xs mb-2 block" style={{ color: 'var(--text-muted)' }}>
+            <label style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4, display: 'block' }}>
               Inclination: {filters.minInclination.toFixed(0)}° - {filters.maxInclination.toFixed(0)}°
             </label>
             <input
@@ -134,34 +147,36 @@ export function SatellitePanel({
               max="180"
               value={filters.maxInclination}
               onChange={(e) => onFiltersChange({ maxInclination: Number(e.target.value) })}
-              className="w-full"
-              style={{ accentColor: 'var(--accent-primary)' }}
+              style={{ width: '100%', accentColor: 'var(--accent-cyan)' }}
             />
           </div>
         </div>
       )}
 
-      {/* Satellite List */}
-      <div className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>
+      {/* Count */}
+      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8 }}>
         {filteredSatellites.length} of {satellites.length} satellites
       </div>
-      
-      <div className="space-y-1 max-h-[400px] overflow-y-auto pr-1">
+
+      {/* Satellite List */}
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
         {filteredSatellites.slice(0, 50).map((sat) => {
           const altitude = getAltitude(sat.id);
           const isSelected = filters.selectedSatelliteId === sat.id;
-          
+
           return (
             <button
               key={sat.id}
               onClick={() => onSatelliteSelect(isSelected ? null : sat.id)}
               className={`satellite-item ${isSelected ? 'selected' : ''}`}
             >
-              <div>
-                <div className="sat-name">{sat.name}</div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <div className="sat-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {sat.name}
+                </div>
                 <div className="sat-designator">{sat.intlDesignator}</div>
               </div>
-              <div className="text-right">
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 <div className="sat-altitude">
                   {altitude ? `${altitude.toFixed(0)} km` : '—'}
                 </div>
@@ -171,12 +186,12 @@ export function SatellitePanel({
           );
         })}
       </div>
-      
+
       {filteredSatellites.length > 50 && (
-        <div className="text-xs text-center py-3" style={{ color: 'var(--text-muted)' }}>
+        <div style={{ textAlign: 'center', fontSize: 11, color: 'var(--text-muted)', padding: '12px 0' }}>
           +{filteredSatellites.length - 50} more satellites
         </div>
       )}
-    </DraggablePanel>
+    </SidebarPanel>
   );
 }
