@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import type { SatellitePosition, ConjunctionWarning, SatelliteInfo } from '../types';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import type { SatellitePosition, ConjunctionWarning, SatelliteInfo, DebrisObject, DebrisStatistics, DebrisType, DebrisSize } from '../types';
 
 // Pre-compute satellite data once
 function generateMockSatellites(count: number): SatelliteInfo[] {
@@ -114,10 +114,120 @@ function generateMockConjunctions(): ConjunctionWarning[] {
   ];
 }
 
+// Generate mock debris data
+const DEBRIS_TYPES: DebrisType[] = ['rocket_body', 'payload_debris', 'fragmentation', 'mission_debris', 'unknown'];
+const DEBRIS_SIZES: DebrisSize[] = ['large', 'medium', 'small'];
+const DEBRIS_ORIGINS = ['COSMOS-954', 'FENGYUN-1C', 'IRIDIUM-33', 'COSMOS-2251', 'BREEZE-M', 'CZ-3B'];
+
+function generateMockDebris(count: number, time: number): DebrisObject[] {
+  const debris: DebrisObject[] = [];
+  const earthRadius = 6371;
+  const twoPi = 2 * Math.PI;
+  
+  for (let i = 0; i < count; i++) {
+    // Orbital parameters
+    const altitude = 300 + (i % 30) * 50 + Math.random() * 100;
+    const r = earthRadius + altitude;
+    const inclination = 40 + Math.random() * 60;
+    
+    // Position calculation
+    const orbitalPeriod = 90 + (altitude / 100) * 5;
+    const angularVelocity = twoPi / (orbitalPeriod * 60);
+    const theta = angularVelocity * time + (i * twoPi) / count + Math.random() * 0.5;
+    const incl = inclination * Math.PI / 180;
+    const phi = incl * Math.sin(theta);
+    
+    const x = r * Math.cos(theta) * Math.cos(phi);
+    const y = r * Math.sin(theta) * Math.cos(phi);
+    const z = r * Math.sin(phi);
+    
+    const type = DEBRIS_TYPES[i % DEBRIS_TYPES.length];
+    const size = DEBRIS_SIZES[Math.floor(i / 20) % DEBRIS_SIZES.length];
+    
+    debris.push({
+      id: 10000 + i,
+      name: `DEB ${DEBRIS_ORIGINS[i % DEBRIS_ORIGINS.length]}-${String(i).padStart(4, '0')}`,
+      origin: DEBRIS_ORIGINS[i % DEBRIS_ORIGINS.length],
+      type,
+      size,
+      position: { x, y, z },
+      velocity: { x: -7 * Math.sin(theta), y: 7 * Math.cos(theta), z: 0.3 },
+      altitudeKm: altitude,
+      apogeeKm: altitude + Math.random() * 100,
+      perigeeKm: altitude - Math.random() * 50,
+      inclinationDeg: inclination,
+      radarCrossSection: type === 'rocket_body' ? 5.0 : (size === 'large' ? 1.0 : 0.1),
+      estimatedMassKg: type === 'rocket_body' ? 1000 : (size === 'large' ? 50 : 5),
+      decayDays: altitude < 400 ? Math.floor(365 * (altitude / 200)) : -1,
+      timestamp: Date.now() / 1000,
+    });
+  }
+  
+  return debris;
+}
+
+function calculateDebrisStatistics(debris: DebrisObject[]): DebrisStatistics {
+  const stats: DebrisStatistics = {
+    totalDebris: debris.length,
+    rocketBodies: 0,
+    payloadDebris: 0,
+    fragments: 0,
+    leoDebris: 0,
+    meoDebris: 0,
+    geoDebris: 0,
+    averageAltitudeKm: 0,
+    maxDensityAltitudeKm: 800,
+  };
+  
+  let totalAlt = 0;
+  const altBins: Record<number, number> = {};
+  
+  for (const d of debris) {
+    if (d.type === 'rocket_body') stats.rocketBodies++;
+    else if (d.type === 'payload_debris') stats.payloadDebris++;
+    else stats.fragments++;
+    
+    if (d.altitudeKm < 2000) stats.leoDebris++;
+    else if (d.altitudeKm < 35786) stats.meoDebris++;
+    else stats.geoDebris++;
+    
+    totalAlt += d.altitudeKm;
+    const bin = Math.floor(d.altitudeKm / 50) * 50;
+    altBins[bin] = (altBins[bin] || 0) + 1;
+  }
+  
+  if (debris.length > 0) {
+    stats.averageAltitudeKm = totalAlt / debris.length;
+    
+    // Find max density altitude
+    let maxCount = 0;
+    for (const [alt, count] of Object.entries(altBins)) {
+      if (count > maxCount) {
+        maxCount = count;
+        stats.maxDensityAltitudeKm = Number(alt) + 25;
+      }
+    }
+  }
+  
+  return stats;
+}
+
 export function useSatellites() {
   const [satellites, setSatellites] = useState<SatelliteInfo[]>([]);
   const [positions, setPositions] = useState<SatellitePosition[]>([]);
   const [conjunctions, setConjunctions] = useState<ConjunctionWarning[]>([]);
+  const [debris, setDebris] = useState<DebrisObject[]>([]);
+  const [debrisStats, setDebrisStats] = useState<DebrisStatistics>({
+    totalDebris: 0,
+    rocketBodies: 0,
+    payloadDebris: 0,
+    fragments: 0,
+    leoDebris: 0,
+    meoDebris: 0,
+    geoDebris: 0,
+    averageAltitudeKm: 0,
+    maxDensityAltitudeKm: 800,
+  });
   const [loading, setLoading] = useState(true);
   const [time, setTime] = useState(0);
   const startTimeRef = useRef(Date.now());
@@ -130,6 +240,12 @@ export function useSatellites() {
     setSatellites(mockSatellites);
     setPositions([...generateMockPositions(mockSatellites, 0)]);
     setConjunctions(generateMockConjunctions());
+    
+    // Generate debris
+    const mockDebris = generateMockDebris(150, 0);
+    setDebris(mockDebris);
+    setDebrisStats(calculateDebrisStatistics(mockDebris));
+    
     setLoading(false);
   }, []);
 
@@ -144,6 +260,9 @@ export function useSatellites() {
       setTime(Math.floor(elapsed));
       // Create new array reference to trigger React update
       setPositions([...generateMockPositions(satellitesRef.current, elapsed)]);
+      
+      // Update debris positions
+      setDebris(generateMockDebris(150, elapsed));
     }, updateInterval);
 
     return () => clearInterval(intervalId);
@@ -159,6 +278,8 @@ export function useSatellites() {
     satellites,
     positions,
     conjunctions,
+    debris,
+    debrisStats,
     loading,
     refreshData,
     time,

@@ -1,12 +1,14 @@
 import { useEffect, useRef, memo, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import type { SatellitePosition, FilterState, ConjunctionWarning } from '../types';
+import type { SatellitePosition, FilterState, ConjunctionWarning, DebrisObject, DebrisFilterState } from '../types';
 
 interface GlobeViewerProps {
   positions: SatellitePosition[];
   conjunctions: ConjunctionWarning[];
+  debris: DebrisObject[];
   filters: FilterState;
+  debrisFilters: DebrisFilterState;
   onSatelliteClick: (id: number) => void;
   theme: 'light' | 'dark';
 }
@@ -20,11 +22,18 @@ const MEO_COLOR = new THREE.Color(0xffcc00);
 const GEO_COLOR = new THREE.Color(0xff6600);
 const SELECTED_COLOR = new THREE.Color(0xffffff);
 
+// Debris colors
+const DEBRIS_ROCKET_BODY = new THREE.Color(0xff6600);
+const DEBRIS_PAYLOAD = new THREE.Color(0xff3333);
+const DEBRIS_FRAGMENT = new THREE.Color(0xffcc00);
+const DEBRIS_OTHER = new THREE.Color(0x888888);
+
 function GlobeViewerComponent({
   positions,
+  debris,
   filters,
+  debrisFilters,
   onSatelliteClick,
-  theme,
 }: GlobeViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -32,6 +41,7 @@ function GlobeViewerComponent({
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const satellitesRef = useRef<THREE.Points | null>(null);
+  const debrisRef = useRef<THREE.Points | null>(null);
   const earthRef = useRef<THREE.Mesh | null>(null);
   const cloudsRef = useRef<THREE.Mesh | null>(null);
   const animationIdRef = useRef<number>(0);
@@ -240,6 +250,28 @@ function GlobeViewerComponent({
     scene.add(satellites);
     satellitesRef.current = satellites;
 
+    // Pre-create debris points with max capacity
+    const maxDebris = 200;
+    const debrisGeometry = new THREE.BufferGeometry();
+    const debrisPositions = new Float32Array(maxDebris * 3);
+    const debrisColors = new Float32Array(maxDebris * 3);
+    
+    debrisGeometry.setAttribute('position', new THREE.BufferAttribute(debrisPositions, 3));
+    debrisGeometry.setAttribute('color', new THREE.BufferAttribute(debrisColors, 3));
+    debrisGeometry.setDrawRange(0, 0);
+    
+    const debrisMaterial = new THREE.PointsMaterial({
+      size: 0.008,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.7,
+      sizeAttenuation: true,
+    });
+    
+    const debrisPoints = new THREE.Points(debrisGeometry, debrisMaterial);
+    scene.add(debrisPoints);
+    debrisRef.current = debrisPoints;
+
     // Handle resize
     const handleResize = () => {
       if (!containerRef.current || !camera || !renderer) return;
@@ -321,6 +353,68 @@ function GlobeViewerComponent({
     
     prevPositionCountRef.current = len;
   }, [positions, filters.selectedSatelliteId, eciToSpherical, sphericalToCartesian]);
+
+  // Update debris positions
+  useEffect(() => {
+    if (!debrisRef.current || !debrisFilters.showDebris) {
+      if (debrisRef.current) {
+        debrisRef.current.geometry.setDrawRange(0, 0);
+      }
+      return;
+    }
+    
+    const geometry = debrisRef.current.geometry;
+    const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
+    const colorAttr = geometry.getAttribute('color') as THREE.BufferAttribute;
+    
+    if (!posAttr || !colorAttr) return;
+    
+    // Filter debris based on settings
+    const filteredDebris = debris.filter(d => {
+      if (d.altitudeKm < debrisFilters.minAltitudeKm || d.altitudeKm > debrisFilters.maxAltitudeKm) {
+        return false;
+      }
+      if (d.type === 'rocket_body' && !debrisFilters.showRocketBodies) {
+        return false;
+      }
+      if ((d.type === 'fragmentation' || d.type === 'payload_debris') && !debrisFilters.showFragments) {
+        return false;
+      }
+      return true;
+    });
+    
+    const len = Math.min(filteredDebris.length, 200);
+    
+    for (let i = 0; i < len; i++) {
+      const deb = filteredDebris[i];
+      const spherical = eciToSpherical(deb.position);
+      const pos = sphericalToCartesian(spherical.lat, spherical.lon, spherical.r);
+      
+      posAttr.setXYZ(i, pos.x, pos.y, pos.z);
+      
+      // Color based on debris type
+      let color: THREE.Color;
+      switch (deb.type) {
+        case 'rocket_body':
+          color = DEBRIS_ROCKET_BODY;
+          break;
+        case 'payload_debris':
+          color = DEBRIS_PAYLOAD;
+          break;
+        case 'fragmentation':
+          color = DEBRIS_FRAGMENT;
+          break;
+        default:
+          color = DEBRIS_OTHER;
+      }
+      
+      colorAttr.setXYZ(i, color.r, color.g, color.b);
+    }
+    
+    posAttr.needsUpdate = true;
+    colorAttr.needsUpdate = true;
+    geometry.setDrawRange(0, len);
+  }, [debris, debrisFilters, eciToSpherical, sphericalToCartesian]);
 
   // Handle click for satellite selection
   const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {

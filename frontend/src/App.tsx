@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { SatellitePanel, ConjunctionPanel, GlobeViewer, StatusBar } from './components';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { SatellitePanel, ConjunctionPanel, GlobeViewer, StatusBar, DebrisPanel } from './components';
 import { useSatellites } from './hooks/useSatellites';
-import type { FilterState, ConjunctionWarning } from './types';
+import type { FilterState, ConjunctionWarning, DebrisFilterState, DebrisObject } from './types';
 
 const defaultFilters: FilterState = {
   searchQuery: '',
@@ -15,10 +15,21 @@ const defaultFilters: FilterState = {
   orbitType: 'all',
 };
 
+const defaultDebrisFilters: DebrisFilterState = {
+  showDebris: true,
+  showRocketBodies: true,
+  showFragments: true,
+  minAltitudeKm: 0,
+  maxAltitudeKm: 50000,
+  showDebrisFields: false,
+};
+
 function App() {
-  const { satellites, positions, conjunctions, loading, refreshData, time } = useSatellites();
+  const { satellites, positions, conjunctions, debris, debrisStats, loading, refreshData, time } = useSatellites();
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
+  const [debrisFilters, setDebrisFilters] = useState<DebrisFilterState>(defaultDebrisFilters);
+  const [selectedDebrisId, setSelectedDebrisId] = useState<number | null>(null);
   const [fps, setFps] = useState(60);
   
   const frameTimesRef = useRef<number[]>([]);
@@ -72,6 +83,14 @@ function App() {
     }));
   }, []);
 
+  const handleDebrisFiltersChange = useCallback((update: Partial<DebrisFilterState>) => {
+    setDebrisFilters(prev => ({ ...prev, ...update }));
+  }, []);
+
+  const handleDebrisSelect = useCallback((selected: DebrisObject | null) => {
+    setSelectedDebrisId(selected?.id ?? null);
+  }, []);
+
   if (loading && satellites.length === 0) {
     return (
       <div style={{
@@ -102,7 +121,9 @@ function App() {
       <GlobeViewer
         positions={positions}
         conjunctions={conjunctions}
+        debris={debris}
         filters={filters}
+        debrisFilters={debrisFilters}
         onSatelliteClick={handleSatelliteSelect}
         theme="dark"
       />
@@ -119,6 +140,16 @@ function App() {
       <ConjunctionPanel
         conjunctions={conjunctions}
         onConjunctionSelect={handleConjunctionSelect}
+      />
+
+      {/* Debris Panel */}
+      <DebrisPanel
+        debris={debris}
+        statistics={debrisStats}
+        filters={debrisFilters}
+        onFiltersChange={handleDebrisFiltersChange}
+        onDebrisSelect={handleDebrisSelect}
+        selectedDebrisId={selectedDebrisId}
       />
 
       {/* Status Bar - Bottom */}

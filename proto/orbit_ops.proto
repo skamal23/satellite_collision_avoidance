@@ -19,6 +19,7 @@ message SatellitePosition {
   double timestamp = 5;  // Unix timestamp
 }
 
+// === Phase 6: Enhanced Conjunction Warning with Probability ===
 message ConjunctionWarning {
   int32 sat1_id = 1;
   string sat1_name = 2;
@@ -28,12 +29,37 @@ message ConjunctionWarning {
   double miss_distance = 6;          // km
   double relative_velocity = 7;      // km/s
   double collision_probability = 8;  // 0.0 to 1.0
+  
+  // Monte Carlo results (Phase 6.1)
+  int32 monte_carlo_samples = 9;
+  double min_miss_distance = 10;
+  double max_miss_distance = 11;
+  double mean_miss_distance = 12;
+  double std_miss_distance = 13;
+  double combined_radius = 14;       // Hard body collision radius (km)
+}
+
+// === Phase 6: Enhanced Maneuver ===
+message SpacecraftParams {
+  double mass_kg = 1;          // Dry mass
+  double isp_s = 2;            // Specific impulse (seconds)
+  double max_thrust_n = 3;     // Maximum thrust (Newtons)
+  double fuel_mass_kg = 4;     // Available fuel mass
 }
 
 message ManeuverRequest {
   int32 satellite_id = 1;
-  Vec3 delta_v = 2;      // km/s change in velocity
-  double burn_time = 3;  // Unix timestamp of maneuver
+  Vec3 delta_v = 2;            // km/s change in velocity
+  double burn_time = 3;        // Unix timestamp of maneuver
+  SpacecraftParams spacecraft = 4;  // Optional spacecraft parameters
+}
+
+message ManeuverAlternative {
+  Vec3 delta_v = 1;
+  double burn_time = 2;
+  double new_miss_distance = 3;
+  double fuel_cost_kg = 4;
+  string description = 5;
 }
 
 message ManeuverResponse {
@@ -41,8 +67,122 @@ message ManeuverResponse {
   string message = 2;
   repeated SatellitePosition predicted_path = 3;
   double new_miss_distance = 4;  // km, if there was a conjunction
+  double total_delta_v = 5;      // km/s total delta-V magnitude
+  double fuel_cost_kg = 6;       // Estimated fuel consumption
+  repeated ManeuverAlternative alternatives = 7;  // Alternative maneuvers
 }
 
+// === Phase 6.3: Maneuver Optimization ===
+message ManeuverOptimizeRequest {
+  int32 satellite_id = 1;
+  int32 threat_id = 2;           // ID of threatening object
+  double target_miss_distance = 3;  // Desired safe distance (km)
+  double time_to_tca = 4;        // Time until TCA (seconds)
+  SpacecraftParams spacecraft = 5;
+}
+
+message ManeuverOptimizeResponse {
+  bool success = 1;
+  string message = 2;
+  Vec3 recommended_delta_v = 3;
+  double burn_time = 4;
+  double total_delta_v = 5;      // km/s
+  double fuel_cost_kg = 6;
+  double expected_miss_distance = 7;
+  repeated ManeuverAlternative alternatives = 8;
+}
+
+// === Phase 6.2: Historical Replay ===
+message HistoryTimeRange {
+  double start_time = 1;   // Unix timestamp
+  double end_time = 2;
+  double step_seconds = 3;
+}
+
+message PositionSnapshot {
+  double timestamp = 1;              // Unix timestamp
+  repeated int32 satellite_ids = 2;  // Parallel arrays for efficiency
+  repeated float positions_x = 3;
+  repeated float positions_y = 4;
+  repeated float positions_z = 5;
+}
+
+message HistoryRequest {
+  HistoryTimeRange time_range = 1;
+  repeated int32 satellite_ids = 2;  // Empty = all satellites
+}
+
+message HistoryResponse {
+  repeated PositionSnapshot snapshots = 1;
+  int32 total_snapshots = 2;
+}
+
+message ConjunctionHistoryRequest {
+  HistoryTimeRange time_range = 1;
+  optional int32 satellite_id = 2;   // Filter by satellite
+  optional double min_probability = 3;
+}
+
+message ConjunctionHistoryResponse {
+  repeated ConjunctionWarning conjunctions = 1;
+  int32 total_events = 2;
+}
+
+// === Phase 6.4: TLE Updates ===
+message TLESource {
+  string name = 1;
+  string url = 2;
+  int32 refresh_interval_minutes = 3;
+  bool enabled = 4;
+}
+
+message TLEUpdateRequest {
+  repeated string source_names = 1;  // Empty = all sources
+}
+
+message TLEUpdateResult {
+  string source_name = 1;
+  bool success = 2;
+  string error_message = 3;
+  int32 satellites_updated = 4;
+  double fetch_time = 5;  // Unix timestamp
+}
+
+message TLEUpdateResponse {
+  repeated TLEUpdateResult results = 1;
+  int32 total_satellites = 2;
+}
+
+message TLESourcesRequest {}
+
+message TLESourcesResponse {
+  repeated TLESource sources = 1;
+}
+
+// === Phase 6.5: Space Debris ===
+message DebrisObject {
+  int32 id = 1;
+  string name = 2;
+  string origin = 3;              // Fragmentation event source
+  Vec3 position = 4;
+  Vec3 velocity = 5;
+  double radar_cross_section = 6; // m^2
+  double timestamp = 7;
+}
+
+message DebrisFieldRequest {
+  HistoryTimeRange time_range = 1;
+  optional double min_altitude_km = 2;
+  optional double max_altitude_km = 3;
+}
+
+message DebrisFieldResponse {
+  repeated DebrisObject debris = 1;
+  int32 total_count = 2;
+  double flux_density = 3;  // Objects per km^2
+}
+
+// Standard messages
 message OrbitPath {
   int32 satellite_id = 1;
   string name = 2;
@@ -52,7 +192,6 @@ message OrbitPath {
   double step_seconds = 6;
 }
 
-// Request/Response messages
 message TimeRange {
   double start_time = 1;  // Unix timestamp
   double end_time = 2;
@@ -75,6 +214,8 @@ message SatelliteInfo {
   double eccentricity = 5;
   double mean_motion = 6;      // rev/day
   double epoch = 7;            // Unix timestamp
+  bool is_debris = 8;          // Phase 6.5
+  double tle_age_hours = 9;    // Hours since TLE epoch
 }
 
 message CatalogRequest {}
@@ -95,7 +236,7 @@ message ConjunctionBatch {
   int32 total_screened = 3;
 }
 
-// The main service
+// === The main service ===
 service OrbitOps {
   // Stream satellite positions over time
   rpc StreamPositions(TimeRange) returns (stream PositionBatch);
@@ -111,6 +252,20 @@ service OrbitOps {
   
   // Get a single satellite's full orbit path
   rpc GetOrbitPath(TimeRange) returns (OrbitPath);
+  
+  // === Phase 6 RPCs ===
+  
+  // Phase 6.3: Calculate optimal avoidance maneuver
+  rpc OptimizeManeuver(ManeuverOptimizeRequest) returns (ManeuverOptimizeResponse);
+  
+  // Phase 6.2: Historical replay
+  rpc GetHistory(HistoryRequest) returns (HistoryResponse);
+  rpc GetConjunctionHistory(ConjunctionHistoryRequest) returns (ConjunctionHistoryResponse);
+  
+  // Phase 6.4: TLE updates
+  rpc UpdateTLEs(TLEUpdateRequest) returns (TLEUpdateResponse);
+  rpc GetTLESources(TLESourcesRequest) returns (TLESourcesResponse);
+  
+  // Phase 6.5: Space debris
+  rpc GetDebrisField(DebrisFieldRequest) returns (DebrisFieldResponse);
 }
-
-

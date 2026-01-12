@@ -67,6 +67,11 @@ add_library(orbitops_core STATIC
     src/satellite_system.cpp
     src/sgp4_optimized.cpp
     src/collision_optimized.cpp
+    src/collision_probability.cpp
+    src/maneuver_optimizer.cpp
+    src/tle_updater.cpp
+    src/history_recorder.cpp
+    src/debris_model.cpp
 )
 
 if(OpenMP_CXX_FOUND)
