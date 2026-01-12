@@ -13,12 +13,6 @@ interface GlobeViewerProps {
   theme: 'light' | 'dark';
 }
 
-// Orbital path type for rendering
-interface OrbitPath {
-  satelliteId: number;
-  points: Vec3[];
-}
-
 const EARTH_RADIUS = 1;
 const SCALE_FACTOR = 6371;
 
@@ -46,6 +40,7 @@ const ORBIT_PATH_SELECTED = new THREE.Color(0x00ffff);
 
 function GlobeViewerComponent({
   positions,
+  conjunctions,
   debris,
   filters,
   debrisFilters,
@@ -136,17 +131,6 @@ function GlobeViewerComponent({
     return points;
   }, []);
 
-  // Project 3D position to screen coordinates
-  const projectToScreen = useCallback((position: THREE.Vector3, camera: THREE.Camera, width: number, height: number) => {
-    const vector = position.clone();
-    vector.project(camera);
-
-    return {
-      x: (vector.x * 0.5 + 0.5) * width,
-      y: (-vector.y * 0.5 + 0.5) * height,
-      visible: vector.z < 1, // In front of camera
-    };
-  }, []);
 
   useEffect(() => {
     if (!containerRef.current || isInitialized.current) return;

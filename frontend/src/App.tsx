@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { SatellitePanel, ConjunctionPanel, GlobeViewer, StatusBar, DebrisPanel, ManeuverPanel, TimelineControl } from './components';
 import { useSatellites } from './hooks/useSatellites';
 import type { FilterState, ConjunctionWarning, DebrisFilterState, DebrisObject, HistoryState, SpacecraftParams, ManeuverResult, SatelliteInfo } from './types';
-import { Settings, X, Eye, EyeOff, Orbit, Tag, AlertTriangle, Trash2, Gauge } from 'lucide-react';
+import { Settings, X, Orbit, Tag, AlertTriangle, Trash2, Gauge } from 'lucide-react';
 
 const defaultFilters: FilterState = {
   searchQuery: '',
@@ -47,13 +47,6 @@ function App() {
     snapshots: [],
   });
 
-  // Performance metrics
-  const [perfMetrics, setPerfMetrics] = useState({
-    propagationTime: 0,
-    collisionCheckTime: 0,
-    renderTime: 0,
-    memoryUsage: 0,
-  });
 
   const frameTimesRef = useRef<number[]>([]);
   const lastFrameTimeRef = useRef(performance.now());
