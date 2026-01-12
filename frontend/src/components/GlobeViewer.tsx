@@ -12,7 +12,92 @@ interface GlobeViewerProps {
 }
 
 const EARTH_RADIUS = 1;
-const SCALE_FACTOR = 6371; // km per unit
+const SCALE_FACTOR = 6371;
+
+// Atmosphere shader
+const atmosphereVertexShader = `
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    vPosition = position;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const atmosphereFragmentShader = `
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+  uniform vec3 lightDirection;
+  
+  void main() {
+    float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
+    float sunFacing = max(0.0, dot(vNormal, lightDirection));
+    vec3 atmosphereColor = mix(
+      vec3(0.1, 0.4, 0.8),
+      vec3(0.3, 0.6, 1.0),
+      sunFacing
+    );
+    gl_FragColor = vec4(atmosphereColor, intensity * 0.6);
+  }
+`;
+
+// Earth shader for day/night transition
+const earthVertexShader = `
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+  
+  void main() {
+    vUv = uv;
+    vNormal = normalize(normalMatrix * normal);
+    vPosition = (modelMatrix * vec4(position, 1.0)).xyz;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const earthFragmentShader = `
+  uniform sampler2D dayTexture;
+  uniform sampler2D nightTexture;
+  uniform sampler2D cloudsTexture;
+  uniform sampler2D bumpTexture;
+  uniform sampler2D specularTexture;
+  uniform vec3 lightDirection;
+  uniform float cloudOpacity;
+  
+  varying vec2 vUv;
+  varying vec3 vNormal;
+  varying vec3 vPosition;
+  
+  void main() {
+    vec3 dayColor = texture2D(dayTexture, vUv).rgb;
+    vec3 nightColor = texture2D(nightTexture, vUv).rgb;
+    vec3 clouds = texture2D(cloudsTexture, vUv).rgb;
+    float specular = texture2D(specularTexture, vUv).r;
+    
+    // Day/night blending based on sun direction
+    float sunIntensity = dot(vNormal, lightDirection);
+    float dayNightMix = smoothstep(-0.2, 0.3, sunIntensity);
+    
+    // Blend day and night
+    vec3 surfaceColor = mix(nightColor * 1.5, dayColor, dayNightMix);
+    
+    // Add clouds on day side
+    surfaceColor = mix(surfaceColor, vec3(1.0), clouds.r * cloudOpacity * dayNightMix);
+    
+    // Add specular highlight for oceans
+    vec3 viewDir = normalize(cameraPosition - vPosition);
+    vec3 reflectDir = reflect(-lightDirection, vNormal);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 32.0);
+    surfaceColor += vec3(1.0) * spec * specular * 0.5 * dayNightMix;
+    
+    // Fresnel rim lighting
+    float fresnel = pow(1.0 - max(dot(vNormal, viewDir), 0.0), 3.0);
+    surfaceColor += vec3(0.3, 0.6, 1.0) * fresnel * 0.15;
+    
+    gl_FragColor = vec4(surfaceColor, 1.0);
+  }
+`;
 
 function eciToSpherical(pos: { x: number; y: number; z: number }) {
   const r = Math.sqrt(pos.x * pos.x + pos.y * pos.y + pos.z * pos.z);
@@ -44,11 +129,11 @@ function GlobeViewerComponent({
   const controlsRef = useRef<OrbitControls | null>(null);
   const satellitesRef = useRef<THREE.Points | null>(null);
   const earthRef = useRef<THREE.Mesh | null>(null);
-  const atmosphereRef = useRef<THREE.Mesh | null>(null);
+  const cloudsRef = useRef<THREE.Mesh | null>(null);
   const animationIdRef = useRef<number>(0);
   const isInitialized = useRef(false);
+  const lightDirectionRef = useRef(new THREE.Vector3(1, 0.5, 0.5).normalize());
 
-  // Initialize scene
   useEffect(() => {
     if (!containerRef.current || isInitialized.current) return;
     isInitialized.current = true;
@@ -63,17 +148,19 @@ function GlobeViewerComponent({
 
     // Camera
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.01, 100);
-    camera.position.set(0, 0, 4);
+    camera.position.set(0, 0, 3);
     cameraRef.current = camera;
 
-    // Renderer with performance optimizations
+    // Renderer
     const renderer = new THREE.WebGLRenderer({
-      antialias: false, // Disable for performance
+      antialias: true,
       alpha: true,
       powerPreference: 'high-performance',
     });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.2;
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
@@ -81,110 +168,114 @@ function GlobeViewerComponent({
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.minDistance = 1.5;
-    controls.maxDistance = 10;
+    controls.minDistance = 1.3;
+    controls.maxDistance = 8;
     controls.enablePan = false;
+    controls.rotateSpeed = 0.5;
+    controls.zoomSpeed = 0.8;
     controlsRef.current = controls;
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-    scene.add(ambientLight);
+    // Texture loader
+    const textureLoader = new THREE.TextureLoader();
+    
+    // Load Earth textures
+    const dayTexture = textureLoader.load('/textures/earth_day.jpg');
+    const nightTexture = textureLoader.load('/textures/earth_night.jpg');
+    const cloudsTexture = textureLoader.load('/textures/earth_clouds.png');
+    const bumpTexture = textureLoader.load('/textures/earth_bump.jpg');
+    const specularTexture = textureLoader.load('/textures/earth_specular.jpg');
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
-    directionalLight.position.set(5, 3, 5);
-    scene.add(directionalLight);
+    // Set texture properties
+    [dayTexture, nightTexture, cloudsTexture, bumpTexture, specularTexture].forEach(tex => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    });
 
-    // Earth - using procedural textures for instant loading
-    const earthGeometry = new THREE.SphereGeometry(EARTH_RADIUS, 64, 64);
-    
-    // Create gradient texture for Earth
-    const earthCanvas = document.createElement('canvas');
-    earthCanvas.width = 512;
-    earthCanvas.height = 256;
-    const ctx = earthCanvas.getContext('2d')!;
-    
-    // Blue ocean base
-    ctx.fillStyle = '#1a4f8c';
-    ctx.fillRect(0, 0, 512, 256);
-    
-    // Add some landmass-like variations
-    const gradient = ctx.createRadialGradient(256, 128, 0, 256, 128, 200);
-    gradient.addColorStop(0, 'rgba(34, 139, 34, 0.3)');
-    gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, 512, 256);
-    
-    // Add noise pattern for continents
-    for (let i = 0; i < 50; i++) {
-      const x = Math.random() * 512;
-      const y = Math.random() * 256;
-      const r = 20 + Math.random() * 40;
-      const landGrad = ctx.createRadialGradient(x, y, 0, x, y, r);
-      landGrad.addColorStop(0, 'rgba(34, 85, 34, 0.6)');
-      landGrad.addColorStop(0.5, 'rgba(76, 116, 61, 0.3)');
-      landGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-      ctx.fillStyle = landGrad;
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
-    const earthTexture = new THREE.CanvasTexture(earthCanvas);
-    earthTexture.wrapS = THREE.RepeatWrapping;
-    
-    const earthMaterial = new THREE.MeshPhongMaterial({
-      map: earthTexture,
-      shininess: 25,
+    // Earth with custom shader
+    const earthGeometry = new THREE.SphereGeometry(EARTH_RADIUS, 128, 64);
+    const earthMaterial = new THREE.ShaderMaterial({
+      vertexShader: earthVertexShader,
+      fragmentShader: earthFragmentShader,
+      uniforms: {
+        dayTexture: { value: dayTexture },
+        nightTexture: { value: nightTexture },
+        cloudsTexture: { value: cloudsTexture },
+        bumpTexture: { value: bumpTexture },
+        specularTexture: { value: specularTexture },
+        lightDirection: { value: lightDirectionRef.current },
+        cloudOpacity: { value: 0.4 },
+      },
     });
     
     const earth = new THREE.Mesh(earthGeometry, earthMaterial);
     scene.add(earth);
     earthRef.current = earth;
 
+    // Clouds layer
+    const cloudsGeometry = new THREE.SphereGeometry(EARTH_RADIUS * 1.005, 64, 32);
+    const cloudsMaterial = new THREE.MeshPhongMaterial({
+      map: cloudsTexture,
+      transparent: true,
+      opacity: 0.3,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const clouds = new THREE.Mesh(cloudsGeometry, cloudsMaterial);
+    scene.add(clouds);
+    cloudsRef.current = clouds;
+
     // Atmosphere glow
-    const atmosphereGeometry = new THREE.SphereGeometry(EARTH_RADIUS * 1.02, 32, 32);
+    const atmosphereGeometry = new THREE.SphereGeometry(EARTH_RADIUS * 1.15, 64, 32);
     const atmosphereMaterial = new THREE.ShaderMaterial({
-      vertexShader: `
-        varying vec3 vNormal;
-        void main() {
-          vNormal = normalize(normalMatrix * normal);
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-        }
-      `,
-      fragmentShader: `
-        varying vec3 vNormal;
-        void main() {
-          float intensity = pow(0.65 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 2.0);
-          gl_FragColor = vec4(0.3, 0.6, 1.0, 1.0) * intensity;
-        }
-      `,
+      vertexShader: atmosphereVertexShader,
+      fragmentShader: atmosphereFragmentShader,
+      uniforms: {
+        lightDirection: { value: lightDirectionRef.current },
+      },
       blending: THREE.AdditiveBlending,
       side: THREE.BackSide,
       transparent: true,
+      depthWrite: false,
     });
-    
     const atmosphere = new THREE.Mesh(atmosphereGeometry, atmosphereMaterial);
-    atmosphere.scale.set(1.15, 1.15, 1.15);
     scene.add(atmosphere);
-    atmosphereRef.current = atmosphere;
 
-    // Stars background
+    // Ambient light
+    const ambientLight = new THREE.AmbientLight(0x404060, 0.3);
+    scene.add(ambientLight);
+
+    // Sun light
+    const sunLight = new THREE.DirectionalLight(0xffffff, 2);
+    sunLight.position.copy(lightDirectionRef.current.clone().multiplyScalar(10));
+    scene.add(sunLight);
+
+    // Stars
     const starsGeometry = new THREE.BufferGeometry();
-    const starPositions = new Float32Array(3000 * 3);
-    for (let i = 0; i < 3000; i++) {
+    const starPositions = new Float32Array(5000 * 3);
+    const starColors = new Float32Array(5000 * 3);
+    for (let i = 0; i < 5000; i++) {
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
-      const r = 50 + Math.random() * 50;
+      const r = 30 + Math.random() * 40;
       starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
       starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
       starPositions[i * 3 + 2] = r * Math.cos(phi);
+      
+      const brightness = 0.5 + Math.random() * 0.5;
+      const tint = Math.random();
+      starColors[i * 3] = brightness * (tint > 0.8 ? 1.0 : 0.9);
+      starColors[i * 3 + 1] = brightness * (tint > 0.9 ? 0.8 : 0.95);
+      starColors[i * 3 + 2] = brightness;
     }
     starsGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+    starsGeometry.setAttribute('color', new THREE.BufferAttribute(starColors, 3));
     
     const starsMaterial = new THREE.PointsMaterial({
-      color: 0xffffff,
-      size: 0.1,
+      size: 0.08,
       sizeAttenuation: true,
+      vertexColors: true,
+      transparent: true,
+      opacity: 0.9,
     });
     const stars = new THREE.Points(starsGeometry, starsMaterial);
     scene.add(stars);
@@ -201,23 +292,33 @@ function GlobeViewerComponent({
     window.addEventListener('resize', handleResize);
 
     // Animation loop
-    let lastTime = 0;
-    const animate = (time: number) => {
+    let time = 0;
+    const animate = () => {
       animationIdRef.current = requestAnimationFrame(animate);
-      
-      // Throttle to 60fps
-      if (time - lastTime < 16) return;
-      lastTime = time;
+      time += 0.001;
 
       // Slowly rotate Earth
       if (earthRef.current) {
-        earthRef.current.rotation.y += 0.0005;
+        earthRef.current.rotation.y += 0.0003;
       }
+      
+      // Rotate clouds slightly faster
+      if (cloudsRef.current) {
+        cloudsRef.current.rotation.y += 0.0004;
+      }
+
+      // Update light direction (simulate sun movement)
+      const sunAngle = time * 0.1;
+      lightDirectionRef.current.set(
+        Math.cos(sunAngle),
+        0.3,
+        Math.sin(sunAngle)
+      ).normalize();
 
       controls.update();
       renderer.render(scene, camera);
     };
-    animate(0);
+    animate();
 
     return () => {
       window.removeEventListener('resize', handleResize);
@@ -231,10 +332,8 @@ function GlobeViewerComponent({
 
   // Update theme
   useEffect(() => {
-    if (!sceneRef.current || !rendererRef.current) return;
-    
-    const bgColor = theme === 'dark' ? 0x080c18 : 0xe8f0ff;
-    sceneRef.current.background = new THREE.Color(bgColor);
+    if (!sceneRef.current) return;
+    sceneRef.current.background = null; // Transparent for dark theme
   }, [theme]);
 
   // Update satellites
@@ -243,7 +342,6 @@ function GlobeViewerComponent({
     
     const scene = sceneRef.current;
     
-    // Remove old satellites
     if (satellitesRef.current) {
       scene.remove(satellitesRef.current);
       satellitesRef.current.geometry.dispose();
@@ -252,10 +350,8 @@ function GlobeViewerComponent({
 
     if (positions.length === 0) return;
 
-    // Create new satellite points
     const satPositions = new Float32Array(positions.length * 3);
     const satColors = new Float32Array(positions.length * 3);
-    const satSizes = new Float32Array(positions.length);
 
     positions.forEach((sat, i) => {
       const spherical = eciToSpherical(sat.position);
@@ -265,37 +361,34 @@ function GlobeViewerComponent({
       satPositions[i * 3 + 1] = pos.y;
       satPositions[i * 3 + 2] = pos.z;
 
-      // Color by altitude
       const altKm = (spherical.r - EARTH_RADIUS) * SCALE_FACTOR;
       const isSelected = filters.selectedSatelliteId === sat.id;
       
       let color: THREE.Color;
       if (isSelected) {
-        color = new THREE.Color(0x60a5fa);
+        color = new THREE.Color(0x00ff88);
       } else if (altKm < 2000) {
-        color = new THREE.Color(0x22d3ee); // Cyan for LEO
+        color = new THREE.Color(0x00d4ff);
       } else if (altKm < 20000) {
-        color = new THREE.Color(0xfacc15); // Yellow for MEO
+        color = new THREE.Color(0xffcc00);
       } else {
-        color = new THREE.Color(0xfb923c); // Orange for GEO
+        color = new THREE.Color(0xff6600);
       }
 
       satColors[i * 3] = color.r;
       satColors[i * 3 + 1] = color.g;
       satColors[i * 3 + 2] = color.b;
-      satSizes[i] = isSelected ? 8 : 3;
     });
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(satPositions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(satColors, 3));
-    geometry.setAttribute('size', new THREE.BufferAttribute(satSizes, 1));
 
     const material = new THREE.PointsMaterial({
-      size: 0.02,
+      size: 0.015,
       vertexColors: true,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.95,
       sizeAttenuation: true,
     });
 
@@ -304,7 +397,6 @@ function GlobeViewerComponent({
     satellitesRef.current = satellites;
   }, [positions, filters.selectedSatelliteId]);
 
-  // Handle clicks
   const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current || !cameraRef.current || !satellitesRef.current) return;
 
@@ -331,14 +423,8 @@ function GlobeViewerComponent({
     <div
       ref={containerRef}
       onClick={handleClick}
-      style={{
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        cursor: 'grab',
-      }}
+      className="absolute inset-0"
+      style={{ cursor: 'grab', background: 'radial-gradient(ellipse at center, #0a1628 0%, #000000 100%)' }}
     />
   );
 }

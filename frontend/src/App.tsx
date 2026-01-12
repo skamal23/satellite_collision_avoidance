@@ -1,9 +1,8 @@
-import { useState, useCallback } from 'react';
-import { Header, SatellitePanel, ConjunctionPanel, StatusBar } from './components';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { Header, SatellitePanel, ConjunctionPanel, StatusBar, GlobeViewer } from './components';
 import { useTheme } from './hooks/useTheme';
 import { useSatellites } from './hooks/useSatellites';
 import type { FilterState, ConjunctionWarning } from './types';
-import { GlobeViewer } from './components/GlobeViewer';
 
 const defaultFilters: FilterState = {
   searchQuery: '',
@@ -21,7 +20,25 @@ function App() {
   const { theme, toggle: toggleTheme } = useTheme();
   const { satellites, positions, conjunctions, loading, refreshData, time } = useSatellites();
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
-  const [fps] = useState(60);
+  const [fps, setFps] = useState(60);
+  const frameCount = useRef(0);
+  const lastTime = useRef(performance.now());
+
+  // FPS counter
+  useEffect(() => {
+    const countFps = () => {
+      frameCount.current++;
+      const now = performance.now();
+      if (now - lastTime.current >= 1000) {
+        setFps(frameCount.current);
+        frameCount.current = 0;
+        lastTime.current = now;
+      }
+      requestAnimationFrame(countFps);
+    };
+    const id = requestAnimationFrame(countFps);
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   const handleFiltersChange = useCallback((update: Partial<FilterState>) => {
     setFilters(prev => ({ ...prev, ...update }));
@@ -39,56 +56,48 @@ function App() {
   }, []);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden' }}>
-      {/* 3D Globe Background - Layer 0 */}
-      <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
-        <GlobeViewer
-          positions={positions}
-          conjunctions={conjunctions}
-          filters={filters}
-          onSatelliteClick={handleSatelliteSelect}
-          theme={theme}
-        />
-      </div>
+    <div 
+      className="w-full h-full overflow-hidden"
+      data-theme={theme}
+      style={{ position: 'relative' }}
+    >
+      {/* 3D Globe Background */}
+      <GlobeViewer
+        positions={positions}
+        conjunctions={conjunctions}
+        filters={filters}
+        onSatelliteClick={handleSatelliteSelect}
+        theme={theme}
+      />
 
-      {/* UI Overlay - Layer 1 */}
-      <div style={{ position: 'relative', zIndex: 1, pointerEvents: 'none', height: '100%' }}>
-        <div style={{ pointerEvents: 'auto' }}>
-          <Header
-            theme={theme}
-            onThemeToggle={toggleTheme}
-            satelliteCount={satellites.length}
-            conjunctionCount={conjunctions.length}
-            onRefresh={refreshData}
-            loading={loading}
-          />
-        </div>
+      {/* UI Overlay */}
+      <Header
+        theme={theme}
+        onThemeToggle={toggleTheme}
+        satelliteCount={satellites.length}
+        conjunctionCount={conjunctions.length}
+        onRefresh={refreshData}
+        loading={loading}
+      />
 
-        <div style={{ pointerEvents: 'auto' }}>
-          <SatellitePanel
-            satellites={satellites}
-            positions={positions}
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-            onSatelliteSelect={handleSatelliteSelect}
-          />
-        </div>
+      <SatellitePanel
+        satellites={satellites}
+        positions={positions}
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
+        onSatelliteSelect={handleSatelliteSelect}
+      />
 
-        <div style={{ pointerEvents: 'auto' }}>
-          <ConjunctionPanel
-            conjunctions={conjunctions}
-            onConjunctionSelect={handleConjunctionSelect}
-          />
-        </div>
+      <ConjunctionPanel
+        conjunctions={conjunctions}
+        onConjunctionSelect={handleConjunctionSelect}
+      />
 
-        <div style={{ pointerEvents: 'auto' }}>
-          <StatusBar
-            time={time}
-            connected={!loading}
-            fps={fps}
-          />
-        </div>
-      </div>
+      <StatusBar
+        time={time}
+        connected={!loading}
+        fps={fps}
+      />
     </div>
   );
 }

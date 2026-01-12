@@ -1,9 +1,7 @@
-import { Sun, Moon, Satellite, RefreshCw, Settings } from 'lucide-react';
-import { motion } from 'framer-motion';
-import type { Theme } from '../types';
+import { RefreshCw, Settings, Sun, Moon } from 'lucide-react';
 
 interface HeaderProps {
-  theme: Theme;
+  theme: 'light' | 'dark';
   onThemeToggle: () => void;
   satelliteCount: number;
   conjunctionCount: number;
@@ -11,97 +9,74 @@ interface HeaderProps {
   loading: boolean;
 }
 
-export function Header({ 
-  theme, 
-  onThemeToggle, 
-  satelliteCount, 
+export function Header({
+  theme,
+  onThemeToggle,
+  satelliteCount,
   conjunctionCount,
   onRefresh,
-  loading 
+  loading,
 }: HeaderProps) {
   return (
-    <motion.header
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.5, ease: 'easeOut' }}
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-50"
-    >
-      <nav className="glass-panel px-2 py-2 flex items-center gap-1">
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-4 py-2 border-r border-[var(--border-glass)]">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-          >
-            <Satellite className="w-6 h-6 text-[var(--accent-primary)]" />
-          </motion.div>
-          <span className="font-semibold text-lg tracking-tight">
-            Orbit<span className="text-gradient">Ops</span>
-          </span>
+    <header className="app-header liquid-glass">
+      {/* Logo */}
+      <div className="logo">
+        <svg className="logo-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <circle cx="12" cy="12" r="3" />
+          <ellipse cx="12" cy="12" rx="10" ry="4" />
+          <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)" />
+          <ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)" />
+        </svg>
+        <span>
+          Orbit<span style={{ color: 'var(--accent-primary)' }}>Ops</span>
+        </span>
+      </div>
+
+      {/* Stats */}
+      <div className="stats">
+        <div className="stat">
+          <div className="stat-dot active" />
+          <span>{satelliteCount} satellites</span>
         </div>
-
-        {/* Stats */}
-        <div className="flex items-center gap-4 px-4">
-          <div className="flex items-center gap-2">
-            <span className="status-dot active" />
-            <span className="text-sm text-[var(--text-secondary)]">
-              <span className="font-semibold text-[var(--text-primary)]">{satelliteCount.toLocaleString()}</span> satellites
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`status-dot ${conjunctionCount > 0 ? 'warning' : 'active'}`} />
-            <span className="text-sm text-[var(--text-secondary)]">
-              <span className="font-semibold text-[var(--text-primary)]">{conjunctionCount}</span> conjunctions
-            </span>
-          </div>
+        <div className="stat">
+          <div className="stat-dot warning" />
+          <span>{conjunctionCount} conjunctions</span>
         </div>
+      </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-1 px-2 border-l border-[var(--border-glass)]">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={onRefresh}
-            disabled={loading}
-            className="glass-button p-2.5"
-            title="Refresh data"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </motion.button>
+      {/* Actions */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onRefresh}
+          className="panel-btn"
+          title="Refresh data"
+          disabled={loading}
+        >
+          <RefreshCw 
+            size={16} 
+            style={{ 
+              animation: loading ? 'spin 1s linear infinite' : 'none' 
+            }} 
+          />
+        </button>
+        <button className="panel-btn" title="Settings">
+          <Settings size={16} />
+        </button>
+        <button
+          onClick={onThemeToggle}
+          className="panel-btn"
+          title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
+        >
+          {theme === 'light' ? <Moon size={16} /> : <Sun size={16} />}
+        </button>
+      </div>
 
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="glass-button p-2.5"
-            title="Settings"
-          >
-            <Settings className="w-4 h-4" />
-          </motion.button>
-
-          {/* Theme Toggle */}
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={onThemeToggle}
-            className="glass-button p-2.5 flex items-center gap-2"
-            title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-          >
-            <motion.div
-              initial={false}
-              animate={{ rotate: theme === 'dark' ? 0 : 180 }}
-              transition={{ duration: 0.3 }}
-            >
-              {theme === 'dark' ? (
-                <Moon className="w-4 h-4" />
-              ) : (
-                <Sun className="w-4 h-4" />
-              )}
-            </motion.div>
-          </motion.button>
-        </div>
-      </nav>
-    </motion.header>
+      <style>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+    </header>
   );
 }
-
-
