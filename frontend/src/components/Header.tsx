@@ -1,8 +1,6 @@
-import { Sun, Moon, RefreshCw, Settings, Satellite } from 'lucide-react';
+import { RefreshCw, Settings, Satellite } from 'lucide-react';
 
 interface HeaderProps {
-  theme: 'light' | 'dark';
-  onThemeToggle: () => void;
   satelliteCount: number;
   conjunctionCount: number;
   onRefresh: () => void;
@@ -10,8 +8,6 @@ interface HeaderProps {
 }
 
 export function Header({
-  theme,
-  onThemeToggle,
   satelliteCount,
   conjunctionCount,
   onRefresh,
@@ -49,13 +45,6 @@ export function Header({
         </button>
         <button className="panel-btn" title="Settings">
           <Settings size={14} />
-        </button>
-        <button 
-          onClick={onThemeToggle} 
-          className="panel-btn" 
-          title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-        >
-          {theme === 'light' ? <Moon size={14} /> : <Sun size={14} />}
         </button>
       </div>
     </header>

@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Header, SatellitePanel, ConjunctionPanel, GlobeViewer, StatusBar } from './components';
-import { useTheme } from './hooks/useTheme';
 import { useSatellites } from './hooks/useSatellites';
 import type { FilterState, ConjunctionWarning } from './types';
 
@@ -17,7 +16,6 @@ const defaultFilters: FilterState = {
 };
 
 function App() {
-  const { theme, toggle: toggleTheme } = useTheme();
   const { satellites, positions, conjunctions, loading, refreshData, time } = useSatellites();
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
@@ -76,8 +74,8 @@ function App() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: theme === 'dark' ? '#000' : '#e8ecf0',
-        color: theme === 'dark' ? '#fff' : '#333',
+        background: '#030308',
+        color: '#fff',
       }}>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 24, fontWeight: 600, marginBottom: 8 }}>OrbitOps</div>
@@ -88,28 +86,23 @@ function App() {
   }
 
   return (
-    <div 
-      data-theme={theme}
-      style={{
-        width: '100vw',
-        height: '100vh',
-        overflow: 'hidden',
-        position: 'relative',
-      }}
-    >
+    <div style={{
+      width: '100vw',
+      height: '100vh',
+      overflow: 'hidden',
+      position: 'relative',
+    }}>
       {/* 3D Globe Background */}
       <GlobeViewer
         positions={positions}
         conjunctions={conjunctions}
         filters={filters}
         onSatelliteClick={handleSatelliteSelect}
-        theme={theme}
+        theme="dark"
       />
 
       {/* Header */}
       <Header
-        theme={theme}
-        onThemeToggle={toggleTheme}
         satelliteCount={satellites.length}
         conjunctionCount={conjunctions.length}
         onRefresh={refreshData}

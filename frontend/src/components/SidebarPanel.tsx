@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect, ReactNode } from 'react';
-import { Minus, Plus, GripVertical } from 'lucide-react';
+import { Minus, Plus } from 'lucide-react';
 
 interface SidebarPanelProps {
   title: string;
@@ -20,14 +20,13 @@ export function SidebarPanel({
 }: SidebarPanelProps) {
   const [isMinimized, setIsMinimized] = useState(defaultMinimized);
   const [position, setPosition] = useState(defaultPosition || { 
-    x: side === 'left' ? 20 : window.innerWidth - 340, 
-    y: 100 
+    x: side === 'left' ? 20 : window.innerWidth - 360, 
+    y: 90 
   });
   const [isDragging, setIsDragging] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const dragStartRef = useRef({ x: 0, y: 0, panelX: 0, panelY: 0 });
 
-  // Handle drag start
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.panel-btn')) return;
     
@@ -41,7 +40,6 @@ export function SidebarPanel({
     e.preventDefault();
   }, [position]);
 
-  // Handle drag move
   useEffect(() => {
     if (!isDragging) return;
 
@@ -49,11 +47,11 @@ export function SidebarPanel({
       const deltaX = e.clientX - dragStartRef.current.x;
       const deltaY = e.clientY - dragStartRef.current.y;
       
-      const newX = Math.max(0, Math.min(
-        window.innerWidth - 300,
+      const newX = Math.max(10, Math.min(
+        window.innerWidth - 350,
         dragStartRef.current.panelX + deltaX
       ));
-      const newY = Math.max(60, Math.min(
+      const newY = Math.max(70, Math.min(
         window.innerHeight - 100,
         dragStartRef.current.panelY + deltaY
       ));
@@ -74,11 +72,10 @@ export function SidebarPanel({
     };
   }, [isDragging]);
 
-  // Update position on window resize
   useEffect(() => {
     const handleResize = () => {
       setPosition(prev => ({
-        x: Math.min(prev.x, window.innerWidth - 300),
+        x: Math.min(prev.x, window.innerWidth - 350),
         y: Math.min(prev.y, window.innerHeight - 100),
       }));
     };
@@ -96,13 +93,11 @@ export function SidebarPanel({
         position: 'fixed',
       }}
     >
-      {/* Header - Drag Handle */}
       <div 
         className="panel-header"
         onMouseDown={handleMouseDown}
       >
         <div className="panel-title">
-          <GripVertical size={14} style={{ opacity: 0.4, marginRight: -4 }} />
           {icon}
           <span>{title}</span>
         </div>
@@ -112,12 +107,11 @@ export function SidebarPanel({
             onClick={() => setIsMinimized(!isMinimized)}
             title={isMinimized ? 'Expand' : 'Minimize'}
           >
-            {isMinimized ? <Plus size={12} /> : <Minus size={12} />}
+            {isMinimized ? <Plus size={14} /> : <Minus size={14} />}
           </button>
         </div>
       </div>
 
-      {/* Content */}
       {!isMinimized && (
         <div className="panel-content">
           {children}
@@ -126,4 +120,3 @@ export function SidebarPanel({
     </div>
   );
 }
-
