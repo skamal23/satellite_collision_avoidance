@@ -1,5 +1,5 @@
 import { useState, useEffect, memo } from 'react';
-import { Clock, Timer, Cpu, RefreshCw, Settings, Satellite, AlertTriangle } from 'lucide-react';
+import { Clock, Timer, Cpu, RefreshCw, Settings, Satellite, AlertTriangle, Gauge } from 'lucide-react';
 
 interface StatusBarProps {
   time: number;
@@ -8,9 +8,20 @@ interface StatusBarProps {
   conjunctionCount: number;
   onRefresh: () => void;
   loading: boolean;
+  onSettingsClick?: () => void;
+  onPerformanceClick?: () => void;
 }
 
-function StatusBarComponent({ time, fps, satelliteCount, conjunctionCount, onRefresh, loading }: StatusBarProps) {
+function StatusBarComponent({
+  time,
+  fps,
+  satelliteCount,
+  conjunctionCount,
+  onRefresh,
+  loading,
+  onSettingsClick,
+  onPerformanceClick,
+}: StatusBarProps) {
   const [utcTime, setUtcTime] = useState(new Date());
 
   useEffect(() => {
@@ -67,17 +78,29 @@ function StatusBarComponent({ time, fps, satelliteCount, conjunctionCount, onRef
       <div className="status-divider" />
 
       {/* Right: Actions & FPS */}
-      <button 
-        onClick={onRefresh} 
-        className="panel-btn" 
+      <button
+        onClick={onRefresh}
+        className="panel-btn"
         title="Refresh data"
         disabled={loading}
       >
         <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
       </button>
 
-      <button className="panel-btn" title="Settings">
+      <button
+        className="panel-btn"
+        title="Settings"
+        onClick={onSettingsClick}
+      >
         <Settings size={16} />
+      </button>
+
+      <button
+        className="panel-btn"
+        title="Performance Metrics"
+        onClick={onPerformanceClick}
+      >
+        <Gauge size={16} />
       </button>
 
       <div className="status-item" style={{ minWidth: 70 }}>
