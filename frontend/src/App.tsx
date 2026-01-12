@@ -16,103 +16,18 @@ const defaultFilters: FilterState = {
   orbitType: 'all',
 };
 
-// Detect Chromium-based browsers for true liquid glass support
-function isChromium(): boolean {
-  const userAgent = navigator.userAgent;
-  // Chrome, Edge, Opera, Brave all use Chromium
-  return /Chrome/.test(userAgent) && !/Edg/.test(userAgent) 
-    || /Edg/.test(userAgent) 
-    || /OPR/.test(userAgent);
-}
-
-// SVG Filter for True Liquid Glass Effect
-function LiquidGlassSVG() {
-  return (
-    <svg className="liquid-glass-svg" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        {/* Liquid Glass Refraction Filter */}
-        <filter id="liquid-glass-filter" x="-50%" y="-50%" width="200%" height="200%">
-          {/* Create turbulence for subtle distortion */}
-          <feTurbulence 
-            type="fractalNoise" 
-            baseFrequency="0.015" 
-            numOctaves="3" 
-            result="noise"
-          />
-          
-          {/* Use noise for subtle displacement/refraction at edges */}
-          <feDisplacementMap 
-            in="SourceGraphic" 
-            in2="noise" 
-            scale="3" 
-            xChannelSelector="R" 
-            yChannelSelector="G"
-            result="displaced"
-          />
-          
-          {/* Gaussian blur for glass effect */}
-          <feGaussianBlur in="displaced" stdDeviation="0.5" result="blurred" />
-          
-          {/* Create specular lighting for glass shine */}
-          <feSpecularLighting 
-            in="blurred" 
-            specularExponent="20" 
-            lightingColor="#ffffff" 
-            result="specular"
-            surfaceScale="2"
-          >
-            <fePointLight x="-1000" y="-1000" z="2000" />
-          </feSpecularLighting>
-          
-          {/* Composite specular with original */}
-          <feComposite 
-            in="specular" 
-            in2="SourceGraphic" 
-            operator="arithmetic" 
-            k1="0" k2="1" k3="0.3" k4="0"
-            result="specularComposite"
-          />
-          
-          {/* Blend everything together */}
-          <feBlend in="SourceGraphic" in2="specularComposite" mode="screen" />
-        </filter>
-
-        {/* Simpler fallback filter */}
-        <filter id="glass-blur" x="-10%" y="-10%" width="120%" height="120%">
-          <feGaussianBlur in="SourceGraphic" stdDeviation="8" />
-        </filter>
-      </defs>
-    </svg>
-  );
-}
-
 function App() {
   const { theme, toggle: toggleTheme } = useTheme();
   const { satellites, positions, conjunctions, loading, refreshData, time } = useSatellites();
 
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
   const [fps, setFps] = useState(60);
-  const [isChromiumBrowser, setIsChromiumBrowser] = useState(false);
   
   const frameTimesRef = useRef<number[]>([]);
   const lastFrameTimeRef = useRef(performance.now());
   const animationFrameIdRef = useRef<number | null>(null);
 
-  // Detect Chromium on mount
-  useEffect(() => {
-    setIsChromiumBrowser(isChromium());
-    
-    // Add class to body for CSS targeting
-    if (isChromium()) {
-      document.body.classList.add('is-chromium');
-    }
-    
-    return () => {
-      document.body.classList.remove('is-chromium');
-    };
-  }, []);
-
-  // FPS calculation with smoothing
+  // FPS calculation
   const animate = useCallback(() => {
     const now = performance.now();
     const delta = now - lastFrameTimeRef.current;
@@ -172,7 +87,6 @@ function App() {
     );
   }
 
-
   return (
     <div 
       data-theme={theme}
@@ -183,9 +97,6 @@ function App() {
         position: 'relative',
       }}
     >
-      {/* SVG Filter Definitions for Liquid Glass (Chromium only) */}
-      {isChromiumBrowser && <LiquidGlassSVG />}
-
       {/* 3D Globe Background */}
       <GlobeViewer
         positions={positions}
@@ -205,7 +116,7 @@ function App() {
         loading={loading}
       />
 
-      {/* Sidebar Panels - Now draggable, resizable, minimizable */}
+      {/* Sidebar Panels */}
       <SatellitePanel
         satellites={satellites}
         positions={positions}

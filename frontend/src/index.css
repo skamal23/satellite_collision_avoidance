@@ -1,29 +1,18 @@
 @import "tailwindcss";
 
-/* ===== Apple Liquid Glass Design System ===== */
-/* 
- * TRUE Liquid Glass uses SVG filters for refraction (Chrome only)
- * Falls back to glassmorphism for Safari/Firefox
- */
+/* ===== OrbitOps Design System ===== */
 
 :root {
   /* Dark Theme (Default) */
   --bg-space: #000000;
   
-  /* Glass Colors */
-  --glass-bg: rgba(255, 255, 255, 0.06);
-  --glass-bg-hover: rgba(255, 255, 255, 0.1);
-  --glass-bg-solid: rgba(20, 20, 30, 0.85);
-  
-  /* Borders */
-  --glass-border: rgba(255, 255, 255, 0.15);
-  --glass-border-highlight: rgba(255, 255, 255, 0.3);
+  /* Glass Colors - Simple, performant */
+  --glass-bg: rgba(20, 20, 30, 0.75);
+  --glass-bg-hover: rgba(30, 30, 45, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.1);
   
   /* Shadows */
-  --glass-shadow: 
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 8px 32px rgba(0, 0, 0, 0.4),
-    0 2px 8px rgba(0, 0, 0, 0.3);
+  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
   
   /* Text */
   --text-primary: rgba(255, 255, 255, 0.95);
@@ -39,33 +28,18 @@
   
   /* Panel settings */
   --panel-radius: 16px;
-  --panel-blur: 16px;
   --panel-width: 320px;
-  --panel-min-width: 280px;
-  --panel-max-width: 500px;
 }
 
 [data-theme="light"] {
-  --bg-space: #e8ecf0;
-  
-  --glass-bg: rgba(255, 255, 255, 0.45);
-  --glass-bg-hover: rgba(255, 255, 255, 0.6);
-  --glass-bg-solid: rgba(255, 255, 255, 0.85);
-  
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --glass-border-highlight: rgba(255, 255, 255, 0.9);
-  
-  --glass-shadow: 
-    0 0 0 1px rgba(0, 0, 0, 0.05),
-    0 8px 32px rgba(0, 0, 0, 0.08),
-    0 2px 8px rgba(0, 0, 0, 0.04);
-  
+  --bg-space: #c8d0e0;
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-bg-hover: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(0, 0, 0, 0.1);
+  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.1);
   --text-primary: rgba(0, 0, 0, 0.9);
-  --text-secondary: rgba(0, 0, 0, 0.65);
-  --text-muted: rgba(0, 0, 0, 0.45);
-  
-  --accent-cyan: #0099cc;
-  --accent-green: #00aa55;
+  --text-secondary: rgba(0, 0, 0, 0.7);
+  --text-muted: rgba(0, 0, 0, 0.5);
 }
 
 /* ===== Base Reset ===== */
@@ -79,196 +53,38 @@ html, body, #root {
   width: 100%;
   height: 100%;
   overflow: hidden;
-  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   background: var(--bg-space);
   color: var(--text-primary);
 }
 
-/* ===== SVG Filter for True Liquid Glass (Chrome only) ===== */
-.liquid-glass-svg {
-  position: fixed;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
-
-/* ===== Glassmorphism Fallback (Safari/Firefox) ===== */
-.glass-panel {
-  background: var(--glass-bg);
-  backdrop-filter: blur(var(--panel-blur)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(180%);
-  border-radius: var(--panel-radius);
-  box-shadow: var(--glass-shadow);
-  border: 1px solid var(--glass-border);
-  position: relative;
-  overflow: hidden;
-}
-
-/* Specular highlight overlay */
-.glass-panel::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 50%;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.12) 0%,
-    rgba(255, 255, 255, 0.04) 40%,
-    transparent 100%
-  );
-  border-radius: var(--panel-radius) var(--panel-radius) 0 0;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Inner edge glow */
-.glass-panel::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  box-shadow: 
-    inset 0 1px 0 rgba(255, 255, 255, 0.15),
-    inset 1px 0 0 rgba(255, 255, 255, 0.08);
-  pointer-events: none;
-  z-index: 2;
-}
-
-/* ===== True Liquid Glass (Chrome/Chromium) ===== */
-.is-chromium .liquid-glass {
-  /* Use SVG filter for refraction effect */
-  filter: url(#liquid-glass-filter);
-  background: var(--glass-bg);
-  border-radius: var(--panel-radius);
-  box-shadow: var(--glass-shadow);
-  border: 1px solid var(--glass-border);
-  position: relative;
-  overflow: hidden;
-}
-
-.is-chromium .liquid-glass::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 60%;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.2) 0%,
-    rgba(255, 255, 255, 0.08) 30%,
-    transparent 100%
-  );
-  border-radius: var(--panel-radius) var(--panel-radius) 0 0;
-  pointer-events: none;
-  z-index: 1;
-}
-
-/* Fallback for non-Chromium */
+/* ===== Glass Panel - Simple & Fast ===== */
 .liquid-glass {
   background: var(--glass-bg);
-  backdrop-filter: blur(var(--panel-blur)) saturate(180%);
-  -webkit-backdrop-filter: blur(var(--panel-blur)) saturate(180%);
   border-radius: var(--panel-radius);
   box-shadow: var(--glass-shadow);
   border: 1px solid var(--glass-border);
-  position: relative;
-  overflow: hidden;
 }
 
-.liquid-glass::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 50%;
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.12) 0%,
-    rgba(255, 255, 255, 0.04) 40%,
-    transparent 100%
-  );
-  border-radius: var(--panel-radius) var(--panel-radius) 0 0;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.liquid-glass::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  box-shadow: 
-    inset 0 1px 0 rgba(255, 255, 255, 0.15),
-    inset 1px 0 0 rgba(255, 255, 255, 0.08);
-  pointer-events: none;
-  z-index: 2;
-}
-
-/* ===== Draggable/Resizable Panel ===== */
+/* ===== Sidebar Panel ===== */
 .sidebar-panel {
   position: fixed;
   z-index: 100;
   display: flex;
   flex-direction: column;
   width: var(--panel-width);
-  min-width: var(--panel-min-width);
-  max-width: var(--panel-max-width);
   max-height: calc(100vh - 140px);
-  transition: box-shadow 0.2s ease;
-  resize: horizontal;
-  overflow: auto;
-}
-
-.sidebar-panel.left {
-  left: 20px;
-  top: 100px;
-}
-
-.sidebar-panel.right {
-  right: 20px;
-  top: 100px;
 }
 
 .sidebar-panel.minimized {
   max-height: 52px;
-  min-height: 52px;
-  resize: none;
   overflow: hidden;
 }
 
 .sidebar-panel.dragging {
   cursor: grabbing;
-  box-shadow: 
-    0 0 0 2px var(--accent-cyan),
-    0 20px 60px rgba(0, 0, 0, 0.5);
-}
-
-/* Resize handle indicator */
-.sidebar-panel:not(.minimized)::after {
-  content: '';
-  position: absolute;
-  bottom: 8px;
-  right: 8px;
-  width: 12px;
-  height: 12px;
-  background: linear-gradient(
-    135deg,
-    transparent 50%,
-    rgba(255, 255, 255, 0.2) 50%,
-    rgba(255, 255, 255, 0.2) 60%,
-    transparent 60%,
-    transparent 70%,
-    rgba(255, 255, 255, 0.2) 70%,
-    rgba(255, 255, 255, 0.2) 80%,
-    transparent 80%
-  );
-  pointer-events: none;
-  z-index: 100;
+  box-shadow: 0 0 0 2px var(--accent-cyan), var(--glass-shadow);
 }
 
 /* ===== Panel Header ===== */
@@ -278,9 +94,6 @@ html, body, #root {
   justify-content: space-between;
   padding: 14px 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
-  flex-shrink: 0;
-  position: relative;
-  z-index: 10;
   cursor: grab;
   user-select: none;
 }
@@ -317,15 +130,15 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   cursor: pointer;
   color: var(--text-secondary);
   transition: all 0.15s ease;
 }
 
 .panel-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.15);
   color: var(--text-primary);
 }
 
@@ -340,11 +153,8 @@ html, body, #root {
   overflow-y: auto;
   overflow-x: hidden;
   padding: 12px;
-  position: relative;
-  z-index: 10;
 }
 
-/* Custom scrollbar */
 .panel-content::-webkit-scrollbar {
   width: 5px;
 }
@@ -354,12 +164,8 @@ html, body, #root {
 }
 
 .panel-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.15);
   border-radius: 3px;
-}
-
-.panel-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
 }
 
 /* ===== Buttons ===== */
@@ -369,7 +175,7 @@ html, body, #root {
   justify-content: center;
   gap: 6px;
   padding: 7px 12px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
   color: var(--text-secondary);
@@ -380,7 +186,7 @@ html, body, #root {
 }
 
 .glass-btn:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.15);
   color: var(--text-primary);
 }
 
@@ -400,13 +206,13 @@ html, body, #root {
   width: 100%;
   padding: 9px 12px;
   padding-left: 34px;
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   color: var(--text-primary);
   font-size: 13px;
   outline: none;
-  transition: all 0.15s ease;
+  transition: border-color 0.15s ease;
 }
 
 .glass-input::placeholder {
@@ -415,7 +221,6 @@ html, body, #root {
 
 .glass-input:focus {
   border-color: var(--accent-cyan);
-  background: rgba(0, 0, 0, 0.3);
 }
 
 /* ===== Satellite Item ===== */
@@ -430,17 +235,17 @@ html, body, #root {
   cursor: pointer;
   width: 100%;
   text-align: left;
-  transition: all 0.12s ease;
+  transition: background 0.1s ease;
   margin-bottom: 2px;
 }
 
 .satellite-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .satellite-item.selected {
-  background: rgba(0, 212, 255, 0.12);
-  border-color: rgba(0, 212, 255, 0.25);
+  background: rgba(0, 212, 255, 0.15);
+  border-color: rgba(0, 212, 255, 0.3);
 }
 
 .sat-name {
@@ -471,29 +276,29 @@ html, body, #root {
 /* ===== Conjunction Item ===== */
 .conjunction-item {
   padding: 12px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 12px;
   border-left: 3px solid transparent;
   cursor: pointer;
   width: 100%;
   text-align: left;
-  transition: all 0.12s ease;
+  transition: background 0.1s ease;
   margin-bottom: 6px;
 }
 
 .conjunction-item:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .conjunction-item.critical {
   border-left-color: var(--accent-red);
-  background: linear-gradient(90deg, rgba(255, 68, 68, 0.08) 0%, transparent 100%);
+  background: linear-gradient(90deg, rgba(255, 68, 68, 0.1) 0%, transparent 100%);
 }
 
 .conjunction-item.high {
   border-left-color: var(--accent-orange);
-  background: linear-gradient(90deg, rgba(255, 149, 0, 0.08) 0%, transparent 100%);
+  background: linear-gradient(90deg, rgba(255, 149, 0, 0.1) 0%, transparent 100%);
 }
 
 .conjunction-item.medium {
@@ -514,25 +319,10 @@ html, body, #root {
   letter-spacing: 0.3px;
 }
 
-.risk-badge.critical {
-  background: var(--accent-red);
-  color: white;
-}
-
-.risk-badge.high {
-  background: var(--accent-orange);
-  color: white;
-}
-
-.risk-badge.medium {
-  background: var(--accent-yellow);
-  color: #1a1a1a;
-}
-
-.risk-badge.low {
-  background: var(--accent-green);
-  color: white;
-}
+.risk-badge.critical { background: var(--accent-red); color: white; }
+.risk-badge.high { background: var(--accent-orange); color: white; }
+.risk-badge.medium { background: var(--accent-yellow); color: #1a1a1a; }
+.risk-badge.low { background: var(--accent-green); color: white; }
 
 /* ===== Header ===== */
 .app-header {
@@ -566,8 +356,8 @@ html, body, #root {
   align-items: center;
   gap: 16px;
   padding: 0 14px;
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
-  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  border-right: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .stat {
@@ -576,6 +366,10 @@ html, body, #root {
   gap: 6px;
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.stat strong {
+  color: var(--text-primary);
 }
 
 .stat-dot {
@@ -633,7 +427,7 @@ html, body, #root {
   align-items: center;
   gap: 5px;
   color: var(--accent-green);
-  background: rgba(0, 255, 136, 0.1);
+  background: rgba(0, 255, 136, 0.15);
   padding: 3px 8px;
   border-radius: 5px;
 }
@@ -651,61 +445,34 @@ html, body, #root {
   50% { opacity: 0.5; }
 }
 
-/* ===== Light Mode Adjustments ===== */
+/* ===== Light Mode ===== */
 [data-theme="light"] .panel-header {
-  border-bottom-color: rgba(0, 0, 0, 0.06);
+  border-bottom-color: rgba(0, 0, 0, 0.08);
 }
 
 [data-theme="light"] .glass-btn {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 [data-theme="light"] .glass-btn:hover {
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(0, 0, 0, 0.1);
 }
 
 [data-theme="light"] .glass-input {
-  background: rgba(255, 255, 255, 0.5);
-  border-color: rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.6);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 
 [data-theme="light"] .satellite-item:hover {
-  background: rgba(0, 0, 0, 0.03);
+  background: rgba(0, 0, 0, 0.04);
 }
 
 [data-theme="light"] .conjunction-item {
   background: rgba(0, 0, 0, 0.02);
-  border-color: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.05);
 }
 
 [data-theme="light"] .header-stats {
-  border-color: rgba(0, 0, 0, 0.08);
-}
-
-[data-theme="light"] .liquid-glass::before,
-[data-theme="light"] .glass-panel::before {
-  background: linear-gradient(
-    180deg,
-    rgba(255, 255, 255, 0.5) 0%,
-    rgba(255, 255, 255, 0.15) 40%,
-    transparent 100%
-  );
-}
-
-[data-theme="light"] .liquid-glass::after,
-[data-theme="light"] .glass-panel::after {
-  box-shadow: 
-    inset 0 1px 0 rgba(255, 255, 255, 0.7),
-    inset 1px 0 0 rgba(255, 255, 255, 0.4);
-}
-
-/* ===== Animations ===== */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-in {
-  animation: fadeIn 0.25s ease forwards;
+  border-color: rgba(0, 0, 0, 0.1);
 }
