@@ -54,7 +54,8 @@ export function SatellitePanel({
       title="Satellites"
       icon={<Orbit size={16} />}
       side="left"
-      defaultPosition={{ x: 20, y: 100 }}
+      defaultPosition={{ x: 20, y: 20 }}
+      defaultSize={{ width: 320, height: 600 }}
     >
       {/* Search */}
       <div style={{ position: 'relative', marginBottom: 10 }}>

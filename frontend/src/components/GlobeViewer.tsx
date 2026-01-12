@@ -89,13 +89,35 @@ function GlobeViewerComponent({
     controls.target.set(0, 0, 0);
     controlsRef.current = controls;
 
-    // Lighting
-    const ambientLight = new THREE.AmbientLight(0x404040, 0.5);
+    // Lighting - Full even illumination from all directions
+    // Very strong ambient light for base illumination (no shadows)
+    const ambientLight = new THREE.AmbientLight(0xffffff, 2.5);
     scene.add(ambientLight);
 
-    const sunLight = new THREE.DirectionalLight(0xffffff, 2);
-    sunLight.position.set(5, 3, 5);
-    scene.add(sunLight);
+    // Multiple directional lights from all angles for completely even coverage
+    const sunLight1 = new THREE.DirectionalLight(0xffffff, 0.5);
+    sunLight1.position.set(5, 0, 5);
+    scene.add(sunLight1);
+
+    const sunLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+    sunLight2.position.set(-5, 0, -5);
+    scene.add(sunLight2);
+
+    const sunLight3 = new THREE.DirectionalLight(0xffffff, 0.5);
+    sunLight3.position.set(0, 5, 0);
+    scene.add(sunLight3);
+
+    const sunLight4 = new THREE.DirectionalLight(0xffffff, 0.5);
+    sunLight4.position.set(0, -5, 0);
+    scene.add(sunLight4);
+
+    const sunLight5 = new THREE.DirectionalLight(0xffffff, 0.5);
+    sunLight5.position.set(5, 0, -5);
+    scene.add(sunLight5);
+
+    const sunLight6 = new THREE.DirectionalLight(0xffffff, 0.5);
+    sunLight6.position.set(-5, 0, 5);
+    scene.add(sunLight6);
 
     // Texture loader with error handling
     const textureLoader = new THREE.TextureLoader();

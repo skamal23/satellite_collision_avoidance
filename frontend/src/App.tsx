@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Header, SatellitePanel, ConjunctionPanel, GlobeViewer, StatusBar } from './components';
+import { SatellitePanel, ConjunctionPanel, GlobeViewer, StatusBar } from './components';
 import { useSatellites } from './hooks/useSatellites';
 import type { FilterState, ConjunctionWarning } from './types';
 
@@ -101,14 +101,6 @@ function App() {
         theme="dark"
       />
 
-      {/* Header */}
-      <Header
-        satelliteCount={satellites.length}
-        conjunctionCount={conjunctions.length}
-        onRefresh={refreshData}
-        loading={loading}
-      />
-
       {/* Sidebar Panels */}
       <SatellitePanel
         satellites={satellites}
@@ -123,11 +115,14 @@ function App() {
         onConjunctionSelect={handleConjunctionSelect}
       />
 
-      {/* Status Bar */}
+      {/* Status Bar - Bottom */}
       <StatusBar
         time={time}
-        connected={!loading}
         fps={fps}
+        satelliteCount={satellites.length}
+        conjunctionCount={conjunctions.length}
+        onRefresh={refreshData}
+        loading={loading}
       />
     </div>
   );

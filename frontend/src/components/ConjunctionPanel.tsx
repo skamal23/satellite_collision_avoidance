@@ -34,7 +34,8 @@ export function ConjunctionPanel({ conjunctions, onConjunctionSelect }: Conjunct
       title="Conjunctions"
       icon={<AlertTriangle size={16} />}
       side="right"
-      defaultPosition={{ x: typeof window !== 'undefined' ? window.innerWidth - 340 : 1000, y: 100 }}
+      defaultPosition={{ x: typeof window !== 'undefined' ? window.innerWidth - 360 : 1000, y: 20 }}
+      defaultSize={{ width: 320, height: 450 }}
     >
       {/* Summary */}
       <div style={{ 
