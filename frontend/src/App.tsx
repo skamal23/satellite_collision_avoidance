@@ -1,18 +1,12 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { GlobeViewer } from './components/GlobeViewer';
-import { TopBar } from './components/TopBar';
-import { CommandDock } from './components/CommandDock';
-import type { DockTab } from './components/CommandDock';
-import { SatellitesTab } from './components/SatellitesTab';
-import { AlertsTab } from './components/AlertsTab';
-import { TimelineTab } from './components/TimelineTab';
-import { DebrisTab } from './components/DebrisTab';
-import { FloatingPanel } from './components/FloatingPanel';
+import { StatusBar } from './components/StatusBar';
+import { UnifiedPanel } from './components/UnifiedPanel';
 import { SatelliteDetailDrawer } from './components/SatelliteDetailDrawer';
 import { QuickTour, shouldShowTour } from './components/QuickTour';
 import { useSatellites } from './hooks/useSatellites';
 import type { FilterState, ConjunctionWarning, DebrisFilterState, DebrisObject, HistoryState, SpacecraftParams, ManeuverResult, SatelliteInfo, SatellitePosition } from './types';
-import { Settings, X, Orbit, Tag, AlertTriangle, Trash2, Satellite, Clock, ExternalLink } from 'lucide-react';
+import { Settings, X, Orbit, Tag, AlertTriangle, Trash2, Layers } from 'lucide-react';
 
 const defaultFilters: FilterState = {
   searchQuery: '',
@@ -35,10 +29,8 @@ const defaultDebrisFilters: DebrisFilterState = {
   showDebrisFields: false,
 };
 
-type PanelType = 'satellites' | 'alerts' | 'timeline' | 'debris';
-
 function App() {
-  const { satellites, positions, conjunctions, debris, debrisStats, loading } = useSatellites();
+  const { satellites, positions, conjunctions, debris, debrisStats, loading, refreshData, time } = useSatellites();
 
   // UI State
   const [filters, setFilters] = useState<FilterState>(defaultFilters);
@@ -46,19 +38,8 @@ function App() {
   const [selectedDebrisId, setSelectedDebrisId] = useState<number | null>(null);
   const [fps, setFps] = useState(60);
 
-  // Command Dock state
-  const [activeTab, setActiveTab] = useState<DockTab>('satellites');
-  const [isDockExpanded, setIsDockExpanded] = useState(false);
-
-  // Floating panels state
-  const [openPanels, setOpenPanels] = useState<Set<PanelType>>(new Set());
-  const [panelZIndices, setPanelZIndices] = useState<Record<PanelType, number>>({
-    satellites: 100,
-    alerts: 101,
-    timeline: 102,
-    debris: 103,
-  });
-  const nextZIndexRef = useRef(104);
+  // Panel state
+  const [isPanelOpen, setIsPanelOpen] = useState(true);
 
   // Modals
   const [showSettings, setShowSettings] = useState(false);
@@ -130,37 +111,6 @@ function App() {
     };
   }, []);
 
-  // Panel management
-  const openPanel = useCallback((panel: PanelType) => {
-    setOpenPanels(prev => new Set([...prev, panel]));
-    setPanelZIndices(prev => ({ ...prev, [panel]: nextZIndexRef.current++ }));
-  }, []);
-
-  const closePanel = useCallback((panel: PanelType) => {
-    setOpenPanels(prev => {
-      const next = new Set(prev);
-      next.delete(panel);
-      return next;
-    });
-  }, []);
-
-  const focusPanel = useCallback((panel: PanelType) => {
-    setPanelZIndices(prev => ({ ...prev, [panel]: nextZIndexRef.current++ }));
-  }, []);
-
-  const togglePanel = useCallback((panel: PanelType) => {
-    if (openPanels.has(panel)) {
-      closePanel(panel);
-    } else {
-      openPanel(panel);
-    }
-  }, [openPanels, openPanel, closePanel]);
-
-  // Handle dock tab click - open as floating panel
-  const handleDockTabClick = useCallback((tab: DockTab) => {
-    togglePanel(tab);
-  }, [togglePanel]);
-
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -169,18 +119,6 @@ function App() {
       }
 
       switch (e.key) {
-        case '1':
-          togglePanel('satellites');
-          break;
-        case '2':
-          togglePanel('alerts');
-          break;
-        case '3':
-          togglePanel('timeline');
-          break;
-        case '4':
-          togglePanel('debris');
-          break;
         case 'Escape':
           if (filters.selectedSatelliteId !== null) {
             setFilters(prev => ({ ...prev, selectedSatelliteId: null }));
@@ -195,12 +133,16 @@ function App() {
         case '?':
           setShowTour(true);
           break;
+        case 'p':
+        case 'P':
+          setIsPanelOpen(prev => !prev);
+          break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [filters.selectedSatelliteId, showSettings, togglePanel]);
+  }, [filters.selectedSatelliteId, showSettings]);
 
   // Handlers
   const handleFiltersChange = useCallback((update: Partial<FilterState>) => {
@@ -296,8 +238,8 @@ function App() {
     setHistory(h => ({ ...h, isPlaying: false }));
   }, []);
 
-  const handleTimelineSeek = useCallback((time: number) => {
-    setHistory(h => ({ ...h, currentTime: time }));
+  const handleTimelineSeek = useCallback((newTime: number) => {
+    setHistory(h => ({ ...h, currentTime: newTime }));
   }, []);
 
   const handleSpeedChange = useCallback((speed: number) => {
@@ -367,25 +309,8 @@ function App() {
     );
   }
 
-  // Panel positions
-  const panelPositions: Record<PanelType, { x: number; y: number }> = {
-    satellites: { x: 20, y: 70 },
-    alerts: { x: 420, y: 70 },
-    timeline: { x: 200, y: 200 },
-    debris: { x: 60, y: 150 },
-  };
-
   return (
     <div className="app-container">
-      {/* TopBar */}
-      <TopBar
-        satelliteCount={satellites.length}
-        conjunctionCount={conjunctions.length}
-        fps={fps}
-        onSettingsClick={() => setShowSettings(true)}
-        onHelpClick={() => setShowTour(true)}
-      />
-
       {/* 3D Globe (full screen hero) */}
       <GlobeViewer
         positions={positions}
@@ -397,133 +322,43 @@ function App() {
         theme="dark"
       />
 
-      {/* Floating Panels */}
-      <FloatingPanel
-        id="satellites"
-        title="Satellites"
-        icon={<Satellite size={18} />}
-        isOpen={openPanels.has('satellites')}
-        onClose={() => closePanel('satellites')}
-        defaultPosition={panelPositions.satellites}
-        defaultSize={{ width: 380, height: 600 }}
-        zIndex={panelZIndices.satellites}
-        onFocus={() => focusPanel('satellites')}
-      >
-        <SatellitesTab
-          satellites={satellites}
-          positions={positions}
-          filters={filters}
-          onFiltersChange={handleFiltersChange}
-          onSatelliteSelect={handleSatelliteSelect}
-        />
-      </FloatingPanel>
+      {/* Unified Control Panel */}
+      <UnifiedPanel
+        satellites={satellites}
+        positions={positions}
+        conjunctions={conjunctions}
+        debris={debris}
+        debrisStats={debrisStats}
+        filters={filters}
+        onFiltersChange={handleFiltersChange}
+        onSatelliteSelect={handleSatelliteSelect}
+        onConjunctionSelect={handleConjunctionSelect}
+        debrisFilters={debrisFilters}
+        onDebrisFiltersChange={handleDebrisFiltersChange}
+        selectedDebrisId={selectedDebrisId}
+        onDebrisSelect={handleDebrisSelect}
+        history={history}
+        onTimelinePlay={handleTimelinePlay}
+        onTimelinePause={handleTimelinePause}
+        onTimelineSeek={handleTimelineSeek}
+        onSpeedChange={handleSpeedChange}
+        onToggleRecording={handleToggleRecording}
+        isOpen={isPanelOpen}
+        onClose={() => setIsPanelOpen(false)}
+        defaultPosition={{ x: 20, y: 20 }}
+        defaultSize={{ width: 420, height: 600 }}
+      />
 
-      <FloatingPanel
-        id="alerts"
-        title="Conjunction Alerts"
-        icon={<AlertTriangle size={18} />}
-        isOpen={openPanels.has('alerts')}
-        onClose={() => closePanel('alerts')}
-        defaultPosition={panelPositions.alerts}
-        defaultSize={{ width: 400, height: 500 }}
-        zIndex={panelZIndices.alerts}
-        onFocus={() => focusPanel('alerts')}
-      >
-        <AlertsTab
-          conjunctions={conjunctions}
-          onConjunctionSelect={handleConjunctionSelect}
-        />
-      </FloatingPanel>
-
-      <FloatingPanel
-        id="timeline"
-        title="Timeline Replay"
-        icon={<Clock size={18} />}
-        isOpen={openPanels.has('timeline')}
-        onClose={() => closePanel('timeline')}
-        defaultPosition={panelPositions.timeline}
-        defaultSize={{ width: 500, height: 300 }}
-        minSize={{ width: 400, height: 250 }}
-        zIndex={panelZIndices.timeline}
-        onFocus={() => focusPanel('timeline')}
-      >
-        <TimelineTab
-          history={history}
-          onPlay={handleTimelinePlay}
-          onPause={handleTimelinePause}
-          onSeek={handleTimelineSeek}
-          onSpeedChange={handleSpeedChange}
-          onToggleRecording={handleToggleRecording}
-        />
-      </FloatingPanel>
-
-      <FloatingPanel
-        id="debris"
-        title="Space Debris"
-        icon={<Trash2 size={18} />}
-        isOpen={openPanels.has('debris')}
-        onClose={() => closePanel('debris')}
-        defaultPosition={panelPositions.debris}
-        defaultSize={{ width: 380, height: 550 }}
-        zIndex={panelZIndices.debris}
-        onFocus={() => focusPanel('debris')}
-      >
-        <DebrisTab
-          debris={debris}
-          statistics={debrisStats}
-          filters={debrisFilters}
-          onFiltersChange={handleDebrisFiltersChange}
-          onDebrisSelect={handleDebrisSelect}
-          selectedDebrisId={selectedDebrisId}
-        />
-      </FloatingPanel>
-
-      {/* Command Dock - Panel Launcher */}
-      <CommandDock
-        activeTab={activeTab}
-        isExpanded={isDockExpanded}
-        onTabChange={(tab) => {
-          setActiveTab(tab);
-          handleDockTabClick(tab);
-        }}
-        onExpandChange={setIsDockExpanded}
-        satelliteCount={satellites.length}
-        alertCount={conjunctions.length}
-        debrisCount={debris.length}
-      >
-        {/* Dock shows quick launch buttons instead of content */}
-        <div className="dock-launcher">
-          <div className="launcher-hint">
-            Click a tab above to open its panel, or use keyboard shortcuts:
-          </div>
-          <div className="launcher-shortcuts">
-            <button onClick={() => togglePanel('satellites')} className={openPanels.has('satellites') ? 'active' : ''}>
-              <Satellite size={16} />
-              <span>Satellites</span>
-              <kbd>1</kbd>
-              {openPanels.has('satellites') && <ExternalLink size={12} className="open-indicator" />}
-            </button>
-            <button onClick={() => togglePanel('alerts')} className={openPanels.has('alerts') ? 'active' : ''}>
-              <AlertTriangle size={16} />
-              <span>Alerts</span>
-              <kbd>2</kbd>
-              {openPanels.has('alerts') && <ExternalLink size={12} className="open-indicator" />}
-            </button>
-            <button onClick={() => togglePanel('timeline')} className={openPanels.has('timeline') ? 'active' : ''}>
-              <Clock size={16} />
-              <span>Timeline</span>
-              <kbd>3</kbd>
-              {openPanels.has('timeline') && <ExternalLink size={12} className="open-indicator" />}
-            </button>
-            <button onClick={() => togglePanel('debris')} className={openPanels.has('debris') ? 'active' : ''}>
-              <Trash2 size={16} />
-              <span>Debris</span>
-              <kbd>4</kbd>
-              {openPanels.has('debris') && <ExternalLink size={12} className="open-indicator" />}
-            </button>
-          </div>
-        </div>
-      </CommandDock>
+      {/* Panel toggle button (when panel is closed) */}
+      {!isPanelOpen && (
+        <button
+          className="panel-open-btn liquid-glass"
+          onClick={() => setIsPanelOpen(true)}
+          title="Open Control Panel (P)"
+        >
+          <Layers size={20} />
+        </button>
+      )}
 
       {/* Satellite Detail Drawer */}
       {selectedSatellite && (
@@ -536,6 +371,18 @@ function App() {
           onConjunctionSelect={handleConjunctionSelect}
         />
       )}
+
+      {/* Status Bar at bottom */}
+      <StatusBar
+        time={time}
+        fps={fps}
+        satelliteCount={satellites.length}
+        conjunctionCount={conjunctions.length}
+        onRefresh={refreshData}
+        loading={loading}
+        onSettingsClick={() => setShowSettings(true)}
+        onPerformanceClick={() => {}}
+      />
 
       {/* Settings Modal */}
       {showSettings && (
@@ -614,10 +461,11 @@ function App() {
               <div className="settings-group">
                 <h3>Keyboard Shortcuts</h3>
                 <div className="shortcuts-list">
-                  <div className="shortcut"><kbd>1</kbd> Satellites panel</div>
-                  <div className="shortcut"><kbd>2</kbd> Alerts panel</div>
-                  <div className="shortcut"><kbd>3</kbd> Timeline panel</div>
-                  <div className="shortcut"><kbd>4</kbd> Debris panel</div>
+                  <div className="shortcut"><kbd>1</kbd> Satellites tab</div>
+                  <div className="shortcut"><kbd>2</kbd> Alerts tab</div>
+                  <div className="shortcut"><kbd>3</kbd> Timeline tab</div>
+                  <div className="shortcut"><kbd>4</kbd> Debris tab</div>
+                  <div className="shortcut"><kbd>P</kbd> Toggle panel</div>
                   <div className="shortcut"><kbd>Space</kbd> Play/Pause</div>
                   <div className="shortcut"><kbd>Esc</kbd> Close drawer</div>
                   <div className="shortcut"><kbd>?</kbd> Show tour</div>
@@ -640,80 +488,28 @@ function App() {
           background: var(--bg-space, #030308);
         }
 
-        /* Dock Launcher Styles */
-        .dock-launcher {
-          padding: 20px 24px;
-        }
-
-        .launcher-hint {
-          font-size: 12px;
-          color: rgba(255, 255, 255, 0.4);
-          margin-bottom: 16px;
-          text-align: center;
-        }
-
-        .launcher-shortcuts {
-          display: flex;
-          gap: 12px;
-          justify-content: center;
-          flex-wrap: wrap;
-        }
-
-        .launcher-shortcuts button {
+        /* Panel open button */
+        .panel-open-btn {
+          position: fixed;
+          top: 20px;
+          left: 20px;
+          z-index: 150;
+          width: 48px;
+          height: 48px;
           display: flex;
           align-items: center;
-          gap: 10px;
-          padding: 14px 20px;
-          background: rgba(255, 255, 255, 0.03);
-          border: 1px solid rgba(255, 255, 255, 0.08);
-          border-radius: 14px;
-          color: rgba(255, 255, 255, 0.7);
-          font-size: 13px;
+          justify-content: center;
           cursor: pointer;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: rgba(255, 255, 255, 0.8);
           transition: all 0.2s ease;
-          position: relative;
         }
 
-        .launcher-shortcuts button:hover {
-          background: rgba(255, 255, 255, 0.06);
-          border-color: rgba(255, 255, 255, 0.15);
-          color: white;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-        }
-
-        .launcher-shortcuts button.active {
-          background: rgba(0, 212, 255, 0.1);
-          border-color: rgba(0, 212, 255, 0.3);
+        .panel-open-btn:hover {
+          background: rgba(0, 212, 255, 0.15);
+          border-color: rgba(0, 212, 255, 0.4);
           color: var(--accent-cyan, #00d4ff);
-        }
-
-        .launcher-shortcuts button svg:first-child {
-          opacity: 0.7;
-        }
-
-        .launcher-shortcuts button.active svg:first-child {
-          opacity: 1;
-          filter: drop-shadow(0 0 6px var(--accent-cyan, #00d4ff));
-        }
-
-        .launcher-shortcuts kbd {
-          padding: 4px 8px;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 6px;
-          font-family: 'SF Mono', Monaco, monospace;
-          font-size: 10px;
-          color: rgba(255, 255, 255, 0.5);
-          margin-left: auto;
-        }
-
-        .open-indicator {
-          position: absolute;
-          top: 8px;
-          right: 8px;
-          color: var(--accent-cyan, #00d4ff);
-          opacity: 0.7;
+          box-shadow: 0 0 30px rgba(0, 212, 255, 0.2);
         }
 
         /* Modal Styles */
