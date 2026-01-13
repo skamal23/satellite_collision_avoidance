@@ -1,6 +1,6 @@
 import { memo, useState, useCallback, useMemo } from 'react';
-import { X, Orbit, AlertTriangle, Rocket, Target, Fuel, Check, ChevronDown, Clock, Gauge } from 'lucide-react';
-import type { SatelliteInfo, SatellitePosition, ConjunctionWarning, ManeuverResult, SpacecraftParams } from '../types';
+import { X, Orbit, AlertTriangle, Rocket, Target, Fuel, Check, ChevronDown, Clock, Gauge, Sparkles } from 'lucide-react';
+import type { SatelliteInfo, SatellitePosition, ConjunctionWarning, ManeuverResult, SpacecraftParams, OptimizeManeuverResult } from '../types';
 
 interface SatelliteDetailDrawerProps {
   satellite: SatelliteInfo | null;
@@ -12,6 +12,13 @@ interface SatelliteDetailDrawerProps {
     deltaV: { x: number; y: number; z: number },
     spacecraft: SpacecraftParams
   ) => Promise<ManeuverResult>;
+  onOptimizeManeuver?: (
+    satelliteId: number,
+    threatId: number,
+    targetMissDistance: number,
+    timeToTca: number,
+    spacecraft: SpacecraftParams
+  ) => Promise<OptimizeManeuverResult>;
   onConjunctionSelect: (conjunction: ConjunctionWarning) => void;
 }
 
@@ -42,6 +49,7 @@ function SatelliteDetailDrawerComponent({
   conjunctions,
   onClose,
   onSimulateManeuver,
+  onOptimizeManeuver,
   onConjunctionSelect,
 }: SatelliteDetailDrawerProps) {
   const [activeSection, setActiveSection] = useState<'info' | 'conjunctions' | 'maneuver'>('info');
@@ -49,6 +57,8 @@ function SatelliteDetailDrawerComponent({
   const [spacecraft, setSpacecraft] = useState<SpacecraftParams>(defaultSpacecraft);
   const [result, setResult] = useState<ManeuverResult | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizeResult, setOptimizeResult] = useState<OptimizeManeuverResult | null>(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
 
   const altitude = useMemo(() => {
@@ -243,6 +253,70 @@ function SatelliteDetailDrawerComponent({
           {/* Maneuver Section */}
           {activeSection === 'maneuver' && (
             <div className="section-maneuver">
+              {/* Active Conjunction Quick Actions */}
+              {relatedConjunctions.length > 0 && onOptimizeManeuver && (
+                <div className="optimize-section">
+                  <h4><Sparkles size={12} /> Quick Optimization</h4>
+                  <p className="optimize-hint">
+                    Calculate optimal δV to avoid the closest threat
+                  </p>
+                  <button
+                    onClick={async () => {
+                      if (!satellite || relatedConjunctions.length === 0) return;
+                      setIsOptimizing(true);
+                      setOptimizeResult(null);
+                      try {
+                        const threat = relatedConjunctions[0];
+                        const threatId = threat.sat1Id === satellite.id ? threat.sat2Id : threat.sat1Id;
+                        const res = await onOptimizeManeuver(
+                          satellite.id,
+                          threatId,
+                          10, // Target 10km miss distance
+                          threat.tca,
+                          spacecraft
+                        );
+                        setOptimizeResult(res);
+                        if (res.success) {
+                          setDeltaV(res.recommendedDeltaV);
+                        }
+                      } finally {
+                        setIsOptimizing(false);
+                      }
+                    }}
+                    disabled={isOptimizing}
+                    className="optimize-btn"
+                  >
+                    <Sparkles size={14} />
+                    {isOptimizing ? 'Calculating...' : 'Calculate Optimal δV'}
+                  </button>
+                  {optimizeResult && (
+                    <div className={`optimize-result ${optimizeResult.success ? 'success' : 'failure'}`}>
+                      {optimizeResult.success ? (
+                        <>
+                          <div className="optimize-result-header">
+                            <Check size={12} /> Optimal maneuver found
+                          </div>
+                          <div className="optimize-details">
+                            <span>δV: {(optimizeResult.totalDeltaV * 1000).toFixed(1)} m/s</span>
+                            <span>Fuel: {optimizeResult.fuelCostKg.toFixed(2)} kg</span>
+                            <span>New miss: {optimizeResult.expectedMissDistance.toFixed(1)} km</span>
+                          </div>
+                          {optimizeResult.alternatives.length > 0 && (
+                            <div className="optimize-alts">
+                              <span className="alts-label">{optimizeResult.alternatives.length} alternatives available</span>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="optimize-result-header error">
+                          <X size={12} /> {optimizeResult.message}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Delta-V Inputs */}
               <div className="maneuver-group">
                 <h4>Delta-V (km/s)</h4>
@@ -658,6 +732,105 @@ function SatelliteDetailDrawerComponent({
           display: flex;
           flex-direction: column;
           gap: 16px;
+        }
+
+        .optimize-section {
+          padding: 14px;
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.1), rgba(0, 212, 255, 0.05));
+          border: 1px solid rgba(139, 92, 246, 0.2);
+          border-radius: 12px;
+        }
+
+        .optimize-section h4 {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+          font-weight: 600;
+          color: rgba(139, 92, 246, 1);
+          margin: 0 0 8px;
+        }
+
+        .optimize-hint {
+          font-size: 11px;
+          color: rgba(255, 255, 255, 0.5);
+          margin: 0 0 12px;
+        }
+
+        .optimize-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          width: 100%;
+          padding: 10px 16px;
+          background: linear-gradient(135deg, rgba(139, 92, 246, 0.8), rgba(59, 130, 246, 0.8));
+          border: none;
+          border-radius: 8px;
+          color: white;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.15s ease;
+        }
+
+        .optimize-btn:hover {
+          background: linear-gradient(135deg, rgba(139, 92, 246, 1), rgba(59, 130, 246, 1));
+          box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+        }
+
+        .optimize-btn:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .optimize-result {
+          margin-top: 12px;
+          padding: 10px 12px;
+          border-radius: 8px;
+        }
+
+        .optimize-result.success {
+          background: rgba(0, 255, 136, 0.1);
+          border: 1px solid rgba(0, 255, 136, 0.2);
+        }
+
+        .optimize-result.failure {
+          background: rgba(255, 68, 68, 0.1);
+          border: 1px solid rgba(255, 68, 68, 0.2);
+        }
+
+        .optimize-result-header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          color: var(--accent-green, #00ff88);
+          margin-bottom: 8px;
+        }
+
+        .optimize-result-header.error {
+          color: var(--accent-red, #ff4444);
+        }
+
+        .optimize-details {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 12px;
+          font-size: 11px;
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .optimize-alts {
+          margin-top: 8px;
+          padding-top: 8px;
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .alts-label {
+          font-size: 10px;
+          color: rgba(255, 255, 255, 0.4);
         }
 
         .maneuver-group h4 {

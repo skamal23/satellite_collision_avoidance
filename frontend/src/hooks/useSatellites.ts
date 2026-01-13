@@ -5,10 +5,10 @@ import type { SatellitePosition, ConjunctionWarning, SatelliteInfo, DebrisObject
 function generateMockSatellites(count: number): SatelliteInfo[] {
   const satellites: SatelliteInfo[] = [];
   const names = [
-    'ISS (ZARYA)', 'CSS (TIANHE)', 'STARLINK', 'ONEWEB', 'COSMOS', 
+    'ISS (ZARYA)', 'CSS (TIANHE)', 'STARLINK', 'ONEWEB', 'COSMOS',
     'IRIDIUM', 'GLOBALSTAR', 'ORBCOMM', 'GOES', 'NOAA'
   ];
-  
+
   for (let i = 0; i < count; i++) {
     const namePrefix = names[i % names.length];
     satellites.push({
@@ -29,7 +29,7 @@ let positionsBuffer: SatellitePosition[] = [];
 
 function generateMockPositions(satellites: SatelliteInfo[], time: number): SatellitePosition[] {
   const len = satellites.length;
-  
+
   // Resize buffer if needed
   if (positionsBuffer.length !== len) {
     positionsBuffer = new Array(len);
@@ -43,27 +43,27 @@ function generateMockPositions(satellites: SatelliteInfo[], time: number): Satel
       };
     }
   }
-  
+
   const earthRadius = 6371;
   const twoPi = 2 * Math.PI;
   const now = Date.now() / 1000;
-  
+
   for (let i = 0; i < len; i++) {
     const sat = satellites[i];
     const altitude = 400 + (i % 20) * 100;
     const r = earthRadius + altitude;
-    
+
     const orbitalPeriod = 90 + (altitude / 100) * 5;
     const angularVelocity = twoPi / (orbitalPeriod * 60);
     const theta = angularVelocity * time + (i * twoPi) / len;
-    
+
     const incl = sat.inclination * Math.PI / 180;
     const phi = incl * Math.sin(theta);
     const cosTheta = Math.cos(theta);
     const sinTheta = Math.sin(theta);
     const cosPhi = Math.cos(phi);
     const sinPhi = Math.sin(phi);
-    
+
     const pos = positionsBuffer[i];
     pos.id = sat.id;
     pos.name = sat.name;
@@ -75,7 +75,7 @@ function generateMockPositions(satellites: SatelliteInfo[], time: number): Satel
     pos.velocity.z = 0.5 * cosPhi;
     pos.timestamp = now;
   }
-  
+
   return positionsBuffer;
 }
 
@@ -123,27 +123,27 @@ function generateMockDebris(count: number, time: number): DebrisObject[] {
   const debris: DebrisObject[] = [];
   const earthRadius = 6371;
   const twoPi = 2 * Math.PI;
-  
+
   for (let i = 0; i < count; i++) {
     // Orbital parameters
     const altitude = 300 + (i % 30) * 50 + Math.random() * 100;
     const r = earthRadius + altitude;
     const inclination = 40 + Math.random() * 60;
-    
+
     // Position calculation
     const orbitalPeriod = 90 + (altitude / 100) * 5;
     const angularVelocity = twoPi / (orbitalPeriod * 60);
     const theta = angularVelocity * time + (i * twoPi) / count + Math.random() * 0.5;
     const incl = inclination * Math.PI / 180;
     const phi = incl * Math.sin(theta);
-    
+
     const x = r * Math.cos(theta) * Math.cos(phi);
     const y = r * Math.sin(theta) * Math.cos(phi);
     const z = r * Math.sin(phi);
-    
+
     const type = DEBRIS_TYPES[i % DEBRIS_TYPES.length];
     const size = DEBRIS_SIZES[Math.floor(i / 20) % DEBRIS_SIZES.length];
-    
+
     debris.push({
       id: 10000 + i,
       name: `DEB ${DEBRIS_ORIGINS[i % DEBRIS_ORIGINS.length]}-${String(i).padStart(4, '0')}`,
@@ -162,7 +162,7 @@ function generateMockDebris(count: number, time: number): DebrisObject[] {
       timestamp: Date.now() / 1000,
     });
   }
-  
+
   return debris;
 }
 
@@ -178,27 +178,27 @@ function calculateDebrisStatistics(debris: DebrisObject[]): DebrisStatistics {
     averageAltitudeKm: 0,
     maxDensityAltitudeKm: 800,
   };
-  
+
   let totalAlt = 0;
   const altBins: Record<number, number> = {};
-  
+
   for (const d of debris) {
     if (d.type === 'rocket_body') stats.rocketBodies++;
     else if (d.type === 'payload_debris') stats.payloadDebris++;
     else stats.fragments++;
-    
+
     if (d.altitudeKm < 2000) stats.leoDebris++;
     else if (d.altitudeKm < 35786) stats.meoDebris++;
     else stats.geoDebris++;
-    
+
     totalAlt += d.altitudeKm;
     const bin = Math.floor(d.altitudeKm / 50) * 50;
     altBins[bin] = (altBins[bin] || 0) + 1;
   }
-  
+
   if (debris.length > 0) {
     stats.averageAltitudeKm = totalAlt / debris.length;
-    
+
     // Find max density altitude
     let maxCount = 0;
     for (const [alt, count] of Object.entries(altBins)) {
@@ -208,7 +208,7 @@ function calculateDebrisStatistics(debris: DebrisObject[]): DebrisStatistics {
       }
     }
   }
-  
+
   return stats;
 }
 
@@ -230,39 +230,44 @@ export function useSatellites() {
   });
   const [loading, setLoading] = useState(true);
   const [time, setTime] = useState(0);
-  const startTimeRef = useRef(Date.now());
+  const startTimeRef = useRef<number>(0); // Initialized in useEffect
   const satellitesRef = useRef<SatelliteInfo[]>([]);
 
   // Initialize with mock data - only once
   useEffect(() => {
-    const mockSatellites = generateMockSatellites(100);
+    // Set start time inside effect (not during render)
+    startTimeRef.current = Date.now();
+
+    const mockSatellites = generateMockSatellites(2000);
     satellitesRef.current = mockSatellites;
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSatellites(mockSatellites);
     setPositions([...generateMockPositions(mockSatellites, 0)]);
     setConjunctions(generateMockConjunctions());
-    
+
     // Generate debris
-    const mockDebris = generateMockDebris(150, 0);
+    const mockDebris = generateMockDebris(500, 0);
     setDebris(mockDebris);
     setDebrisStats(calculateDebrisStatistics(mockDebris));
-    
+
     setLoading(false);
   }, []);
 
   // Update positions using setInterval instead of RAF (more efficient for throttled updates)
   useEffect(() => {
     if (satellitesRef.current.length === 0) return;
-    
+
     const updateInterval = 2000; // 2 seconds
-    
+
     const intervalId = setInterval(() => {
       const elapsed = (Date.now() - startTimeRef.current) / 1000;
       setTime(Math.floor(elapsed));
       // Create new array reference to trigger React update
       setPositions([...generateMockPositions(satellitesRef.current, elapsed)]);
-      
+
       // Update debris positions
-      setDebris(generateMockDebris(150, elapsed));
+      setDebris(generateMockDebris(500, elapsed));
     }, updateInterval);
 
     return () => clearInterval(intervalId);

@@ -1,5 +1,5 @@
 import { useState, useMemo, memo, useCallback } from 'react';
-import { Search, ChevronDown, Orbit, Eye, EyeOff } from 'lucide-react';
+import { Search, ChevronDown, Orbit, Eye, EyeOff, Info } from 'lucide-react';
 import type { SatelliteInfo, SatellitePosition, FilterState } from '../types';
 
 interface SatellitesTabProps {
@@ -8,35 +8,47 @@ interface SatellitesTabProps {
   filters: FilterState;
   onFiltersChange: (filters: Partial<FilterState>) => void;
   onSatelliteSelect: (id: number | null) => void;
+  onSatelliteFocus?: (id: number) => void;
 }
 
 const SatelliteItem = memo(function SatelliteItem({
   sat,
   altitude,
   isSelected,
-  onSelect,
+  onFocus,
+  onInfo,
 }: {
   sat: SatelliteInfo;
   altitude: number | null;
   isSelected: boolean;
-  onSelect: () => void;
+  onFocus: () => void;
+  onInfo: () => void;
 }) {
   return (
-    <button
-      onClick={onSelect}
-      className={`satellite-list-item ${isSelected ? 'selected' : ''}`}
-    >
-      <div className="sat-info">
-        <div className="sat-name">{sat.name}</div>
-        <div className="sat-designator">{sat.intlDesignator}</div>
-      </div>
-      <div className="sat-metrics">
-        <div className="sat-altitude">
-          {altitude !== null ? `${altitude.toFixed(0)} km` : '—'}
+    <div className={`satellite-list-item ${isSelected ? 'selected' : ''}`}>
+      <button
+        onClick={onFocus}
+        className="sat-main"
+      >
+        <div className="sat-info">
+          <div className="sat-name">{sat.name}</div>
+          <div className="sat-designator">{sat.intlDesignator}</div>
         </div>
-        <div className="sat-inclination">{sat.inclination.toFixed(1)}°</div>
-      </div>
-    </button>
+        <div className="sat-metrics">
+          <div className="sat-altitude">
+            {altitude !== null ? `${altitude.toFixed(0)} km` : '—'}
+          </div>
+          <div className="sat-inclination">{sat.inclination.toFixed(1)}°</div>
+        </div>
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onInfo(); }}
+        className="sat-info-btn"
+        title="View details"
+      >
+        <Info size={14} />
+      </button>
+    </div>
   );
 });
 
@@ -46,6 +58,7 @@ function SatellitesTabComponent({
   filters,
   onFiltersChange,
   onSatelliteSelect,
+  onSatelliteFocus,
 }: SatellitesTabProps) {
   const [showFilters, setShowFilters] = useState(false);
 
@@ -63,7 +76,7 @@ function SatellitesTabComponent({
       if (filters.searchQuery) {
         const query = filters.searchQuery.toLowerCase();
         if (!sat.name.toLowerCase().includes(query) &&
-            !sat.intlDesignator.toLowerCase().includes(query)) {
+          !sat.intlDesignator.toLowerCase().includes(query)) {
           return false;
         }
       }
@@ -103,9 +116,16 @@ function SatellitesTabComponent({
     onFiltersChange({ maxInclination: Number(e.target.value) });
   }, [onFiltersChange]);
 
-  const handleSatelliteSelect = useCallback((sat: SatelliteInfo) => {
-    onSatelliteSelect(filters.selectedSatelliteId === sat.id ? null : sat.id);
-  }, [onSatelliteSelect, filters.selectedSatelliteId]);
+  // Focus: highlight satellite on globe (click row)
+  const handleSatelliteFocus = useCallback((sat: SatelliteInfo) => {
+    onFiltersChange({ selectedSatelliteId: sat.id });
+    onSatelliteFocus?.(sat.id);
+  }, [onFiltersChange, onSatelliteFocus]);
+
+  // Info: open detail drawer (click info button)
+  const handleSatelliteInfo = useCallback((sat: SatelliteInfo) => {
+    onSatelliteSelect(sat.id);
+  }, [onSatelliteSelect]);
 
   return (
     <div className="tab-content satellites-tab">
@@ -194,7 +214,8 @@ function SatellitesTabComponent({
             sat={sat}
             altitude={altitudeMap.get(sat.id) ?? null}
             isSelected={filters.selectedSatelliteId === sat.id}
-            onSelect={() => handleSatelliteSelect(sat)}
+            onFocus={() => handleSatelliteFocus(sat)}
+            onInfo={() => handleSatelliteInfo(sat)}
           />
         ))}
         {displayedSatellites.length === 0 && (
@@ -389,20 +410,57 @@ function SatellitesTabComponent({
 
         .satellite-list-item {
           display: flex;
-          justify-content: space-between;
           align-items: center;
-          padding: 12px 14px;
+          gap: 8px;
+          padding: 4px;
           background: transparent;
           border: 1px solid transparent;
           border-radius: 12px;
-          cursor: pointer;
           transition: all 0.15s ease;
-          text-align: left;
         }
 
         .satellite-list-item:hover {
           background: rgba(255, 255, 255, 0.04);
           border-color: rgba(255, 255, 255, 0.06);
+        }
+
+        .sat-main {
+          flex: 1;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 10px 12px;
+          background: transparent;
+          border: none;
+          border-radius: 10px;
+          cursor: pointer;
+          text-align: left;
+          transition: all 0.15s ease;
+        }
+
+        .sat-main:hover {
+          background: rgba(255, 255, 255, 0.03);
+        }
+
+        .sat-info-btn {
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 8px;
+          color: rgba(255, 255, 255, 0.5);
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.15s ease;
+        }
+
+        .sat-info-btn:hover {
+          background: rgba(0, 212, 255, 0.15);
+          border-color: rgba(0, 212, 255, 0.4);
+          color: var(--accent-cyan, #00d4ff);
         }
 
         .satellite-list-item.selected {

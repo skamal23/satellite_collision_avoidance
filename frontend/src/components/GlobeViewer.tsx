@@ -11,6 +11,7 @@ interface GlobeViewerProps {
   debrisFilters: DebrisFilterState;
   onSatelliteClick: (id: number) => void;
   theme: 'light' | 'dark';
+  focusSatelliteId?: number | null;
 }
 
 const EARTH_RADIUS = 1;
@@ -45,6 +46,7 @@ function GlobeViewerComponent({
   filters,
   debrisFilters,
   onSatelliteClick,
+  focusSatelliteId,
 }: GlobeViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -68,6 +70,9 @@ function GlobeViewerComponent({
 
   // State for label positions (updated during animation)
   const [labelPositions, setLabelPositions] = useState<Map<number, { x: number; y: number; visible: boolean }>>(new Map());
+
+  // State for focused satellite position (for the floating label)
+  const [focusedPosition, setFocusedPosition] = useState<{ x: number; y: number; visible: boolean; name: string } | null>(null);
 
   // Convert ECI coordinates to spherical for rendering
   const eciToSpherical = useCallback((pos: { x: number; y: number; z: number }) => {
@@ -187,13 +192,13 @@ function GlobeViewerComponent({
 
     // Texture loader
     const textureLoader = new THREE.TextureLoader();
-    
+
     // Earth - reduced segments for performance
     const earthGeometry = new THREE.SphereGeometry(EARTH_RADIUS, 48, 48);
     const earthDayUrl = 'https://unpkg.com/three-globe@2.31.1/example/img/earth-blue-marble.jpg';
     const earthBumpUrl = 'https://unpkg.com/three-globe@2.31.1/example/img/earth-topology.png';
     const cloudsUrl = 'https://unpkg.com/three-globe@2.31.1/example/img/earth-clouds.png';
-    
+
     textureLoader.load(
       earthDayUrl,
       (dayTexture) => {
@@ -202,19 +207,19 @@ function GlobeViewerComponent({
           map: dayTexture,
           shininess: 5,
         });
-        
+
         textureLoader.load(earthBumpUrl, (bumpTexture) => {
           earthMaterial.bumpMap = bumpTexture;
           earthMaterial.bumpScale = 0.05;
           earthMaterial.needsUpdate = true;
         });
-        
+
         textureLoader.load('https://unpkg.com/three-globe@2.31.1/example/img/earth-water.png', (specTexture) => {
           earthMaterial.specularMap = specTexture;
           earthMaterial.specular = new THREE.Color(0x333333);
           earthMaterial.needsUpdate = true;
         });
-        
+
         const earth = new THREE.Mesh(earthGeometry, earthMaterial);
         scene.add(earth);
         earthRef.current = earth;
@@ -274,7 +279,7 @@ function GlobeViewerComponent({
     const starsGeometry = new THREE.BufferGeometry();
     const starCount = 2000;
     const starPositions = new Float32Array(starCount * 3);
-    
+
     for (let i = 0; i < starCount; i++) {
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
@@ -283,7 +288,7 @@ function GlobeViewerComponent({
       starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
       starPositions[i * 3 + 2] = r * Math.cos(phi);
     }
-    
+
     starsGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
     const stars = new THREE.Points(starsGeometry, new THREE.PointsMaterial({
       color: 0xffffff,
@@ -294,15 +299,15 @@ function GlobeViewerComponent({
     scene.add(stars);
 
     // Pre-create satellite points with max capacity
-    const maxSatellites = 200;
+    const maxSatellites = 5000;
     const satGeometry = new THREE.BufferGeometry();
     const satPositions = new Float32Array(maxSatellites * 3);
     const satColors = new Float32Array(maxSatellites * 3);
-    
+
     satGeometry.setAttribute('position', new THREE.BufferAttribute(satPositions, 3));
     satGeometry.setAttribute('color', new THREE.BufferAttribute(satColors, 3));
     satGeometry.setDrawRange(0, 0);
-    
+
     const satMaterial = new THREE.PointsMaterial({
       size: 0.015,
       vertexColors: true,
@@ -310,21 +315,21 @@ function GlobeViewerComponent({
       opacity: 0.9,
       sizeAttenuation: true,
     });
-    
+
     const satellites = new THREE.Points(satGeometry, satMaterial);
     scene.add(satellites);
     satellitesRef.current = satellites;
 
     // Pre-create debris points with max capacity
-    const maxDebris = 200;
+    const maxDebris = 2000;
     const debrisGeometry = new THREE.BufferGeometry();
     const debrisPositions = new Float32Array(maxDebris * 3);
     const debrisColors = new Float32Array(maxDebris * 3);
-    
+
     debrisGeometry.setAttribute('position', new THREE.BufferAttribute(debrisPositions, 3));
     debrisGeometry.setAttribute('color', new THREE.BufferAttribute(debrisColors, 3));
     debrisGeometry.setDrawRange(0, 0);
-    
+
     const debrisMaterial = new THREE.PointsMaterial({
       size: 0.008,
       vertexColors: true,
@@ -332,7 +337,7 @@ function GlobeViewerComponent({
       opacity: 0.7,
       sizeAttenuation: true,
     });
-    
+
     const debrisPoints = new THREE.Points(debrisGeometry, debrisMaterial);
     scene.add(debrisPoints);
     debrisRef.current = debrisPoints;
@@ -422,25 +427,25 @@ function GlobeViewerComponent({
   // Update satellites - optimized to update buffer attributes instead of recreating
   useEffect(() => {
     if (!satellitesRef.current) return;
-    
+
     const geometry = satellitesRef.current.geometry;
     const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
     const colorAttr = geometry.getAttribute('color') as THREE.BufferAttribute;
-    
+
     if (!posAttr || !colorAttr) return;
-    
-    const len = Math.min(positions.length, 200);
-    
+
+    const len = Math.min(positions.length, 5000);
+
     for (let i = 0; i < len; i++) {
       const sat = positions[i];
       const spherical = eciToSpherical(sat.position);
       const pos = sphericalToCartesian(spherical.lat, spherical.lon, spherical.r);
-      
+
       posAttr.setXYZ(i, pos.x, pos.y, pos.z);
-      
+
       const altKm = (spherical.r - EARTH_RADIUS) * SCALE_FACTOR;
       const isSelected = filters.selectedSatelliteId === sat.id;
-      
+
       let color: THREE.Color;
       if (isSelected) {
         color = SELECTED_COLOR;
@@ -451,14 +456,14 @@ function GlobeViewerComponent({
       } else {
         color = GEO_COLOR;
       }
-      
+
       colorAttr.setXYZ(i, color.r, color.g, color.b);
     }
-    
+
     posAttr.needsUpdate = true;
     colorAttr.needsUpdate = true;
     geometry.setDrawRange(0, len);
-    
+
     prevPositionCountRef.current = len;
   }, [positions, filters.selectedSatelliteId, eciToSpherical, sphericalToCartesian]);
 
@@ -470,13 +475,13 @@ function GlobeViewerComponent({
       }
       return;
     }
-    
+
     const geometry = debrisRef.current.geometry;
     const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute;
     const colorAttr = geometry.getAttribute('color') as THREE.BufferAttribute;
-    
+
     if (!posAttr || !colorAttr) return;
-    
+
     // Filter debris based on settings
     const filteredDebris = debris.filter(d => {
       if (d.altitudeKm < debrisFilters.minAltitudeKm || d.altitudeKm > debrisFilters.maxAltitudeKm) {
@@ -490,16 +495,16 @@ function GlobeViewerComponent({
       }
       return true;
     });
-    
-    const len = Math.min(filteredDebris.length, 200);
-    
+
+    const len = Math.min(filteredDebris.length, 2000);
+
     for (let i = 0; i < len; i++) {
       const deb = filteredDebris[i];
       const spherical = eciToSpherical(deb.position);
       const pos = sphericalToCartesian(spherical.lat, spherical.lon, spherical.r);
-      
+
       posAttr.setXYZ(i, pos.x, pos.y, pos.z);
-      
+
       // Color based on debris type
       let color: THREE.Color;
       switch (deb.type) {
@@ -515,10 +520,10 @@ function GlobeViewerComponent({
         default:
           color = DEBRIS_OTHER;
       }
-      
+
       colorAttr.setXYZ(i, color.r, color.g, color.b);
     }
-    
+
     posAttr.needsUpdate = true;
     colorAttr.needsUpdate = true;
     geometry.setDrawRange(0, len);
@@ -667,6 +672,102 @@ function GlobeViewerComponent({
     });
   }, [filters.showConjunctions, conjunctions, positions, eciToSpherical, sphericalToCartesian]);
 
+  // Fly-to satellite/debris animation when focusSatelliteId changes
+  useEffect(() => {
+    if (!focusSatelliteId || !cameraRef.current || !controlsRef.current) return;
+
+    // Find the position - check satellites first, then debris
+    const sat = positions.find(p => p.id === focusSatelliteId);
+    const deb = debris.find(d => d.id === focusSatelliteId);
+    const target = sat || deb;
+
+    if (!target) {
+      setFocusedPosition(null);
+      return;
+    }
+
+    // Convert ECI to scene coordinates
+    const spherical = eciToSpherical(target.position);
+    const cart = sphericalToCartesian(spherical.lat, spherical.lon, spherical.r);
+
+    // Target position for the camera - offset from satellite
+    const targetDistance = 2.5; // Distance from Earth center
+    const direction = new THREE.Vector3(cart.x, cart.y, cart.z).normalize();
+    const targetPosition = direction.multiplyScalar(targetDistance);
+
+    // Animate camera movement
+    const startPosition = cameraRef.current.position.clone();
+    const startTime = performance.now();
+    const duration = 1000; // 1 second animation
+
+    const animate = () => {
+      const elapsed = performance.now() - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+
+      // Ease-out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+
+      // Interpolate camera position
+      cameraRef.current!.position.lerpVectors(startPosition, targetPosition, eased);
+
+      // Look at Earth center
+      cameraRef.current!.lookAt(0, 0, 0);
+      controlsRef.current!.update();
+
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
+    };
+
+    animate();
+  }, [focusSatelliteId, positions, debris, eciToSpherical, sphericalToCartesian]);
+
+  // Track focused satellite/debris screen position continuously
+  useEffect(() => {
+    if (!focusSatelliteId || !cameraRef.current || !containerRef.current) {
+      setFocusedPosition(null);
+      return;
+    }
+
+    // Find position - check satellites first, then debris
+    const sat = positions.find(p => p.id === focusSatelliteId);
+    const deb = debris.find(d => d.id === focusSatelliteId);
+    const target = sat || deb;
+
+    if (!target) {
+      setFocusedPosition(null);
+      return;
+    }
+
+    let animId: number;
+    const updateFocusedPosition = () => {
+      if (!cameraRef.current || !containerRef.current) return;
+
+      const spherical = eciToSpherical(target.position);
+      const cart = sphericalToCartesian(spherical.lat, spherical.lon, spherical.r);
+
+      const tempVec = new THREE.Vector3(cart.x, cart.y, cart.z);
+      const screenPos = tempVec.project(cameraRef.current);
+
+      const visible = screenPos.z < 1 && Math.abs(screenPos.x) < 1.2 && Math.abs(screenPos.y) < 1.2;
+
+      setFocusedPosition({
+        x: (screenPos.x * 0.5 + 0.5) * containerRef.current.clientWidth,
+        y: (-screenPos.y * 0.5 + 0.5) * containerRef.current.clientHeight,
+        visible,
+        name: target.name,
+      });
+
+      animId = requestAnimationFrame(updateFocusedPosition);
+    };
+
+    updateFocusedPosition();
+
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, [focusSatelliteId, positions, debris, eciToSpherical, sphericalToCartesian]);
+
   // Handle click for satellite selection
   const handleClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     if (!containerRef.current || !cameraRef.current || !satellitesRef.current) return;
@@ -739,6 +840,70 @@ function GlobeViewerComponent({
           })}
         </div>
       )}
+
+      {/* Focused Satellite Label - Prominent Floating Bubble */}
+      {focusedPosition && focusedPosition.visible && (
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            left: focusedPosition.x,
+            top: focusedPosition.y,
+            transform: 'translate(-50%, -100%) translateY(-20px)',
+            zIndex: 30,
+          }}
+        >
+          <div
+            style={{
+              background: 'linear-gradient(135deg, rgba(0, 30, 60, 0.85) 0%, rgba(0, 20, 40, 0.9) 100%)',
+              backdropFilter: 'blur(12px)',
+              border: '1px solid rgba(0, 212, 255, 0.4)',
+              borderRadius: '14px',
+              padding: '10px 18px',
+              boxShadow: '0 0 30px rgba(0, 212, 255, 0.3), 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+            }}
+          >
+            <span
+              style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                background: '#00d4ff',
+                boxShadow: '0 0 12px #00d4ff, 0 0 6px #00d4ff',
+                animation: 'focusPulse 1.5s ease-in-out infinite',
+              }}
+            />
+            <span
+              style={{
+                color: '#fff',
+                fontSize: '14px',
+                fontWeight: 600,
+                letterSpacing: '-0.01em',
+                textShadow: '0 0 20px rgba(0, 212, 255, 0.5)',
+              }}
+            >
+              {focusedPosition.name}
+            </span>
+          </div>
+          {/* Pointer Arrow */}
+          <div
+            style={{
+              position: 'absolute',
+              left: '50%',
+              bottom: '-8px',
+              transform: 'translateX(-50%)',
+              width: 0,
+              height: 0,
+              borderLeft: '8px solid transparent',
+              borderRight: '8px solid transparent',
+              borderTop: '8px solid rgba(0, 30, 60, 0.85)',
+            }}
+          />
+        </div>
+      )}
+
       {/* Conjunction Warning Overlay */}
       {filters.showConjunctions && conjunctions.length > 0 && (
         <div className="absolute top-4 right-4 pointer-events-none" style={{ zIndex: 20 }}>
@@ -750,6 +915,14 @@ function GlobeViewerComponent({
           </div>
         </div>
       )}
+
+      {/* CSS Animation for focus pulse */}
+      <style>{`
+        @keyframes focusPulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.7; transform: scale(1.2); }
+        }
+      `}</style>
     </div>
   );
 }

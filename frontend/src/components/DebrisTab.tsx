@@ -1,5 +1,5 @@
 import { memo, useMemo, useState, useCallback } from 'react';
-import { Eye, EyeOff, ChevronDown, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, ChevronDown, Trash2, Info } from 'lucide-react';
 import type { DebrisObject, DebrisStatistics, DebrisFilterState, DebrisType } from '../types';
 
 interface DebrisTabProps {
@@ -8,6 +8,7 @@ interface DebrisTabProps {
   filters: DebrisFilterState;
   onFiltersChange: (filters: Partial<DebrisFilterState>) => void;
   onDebrisSelect: (debris: DebrisObject | null) => void;
+  onDebrisFocus?: (id: number) => void;
   selectedDebrisId: number | null;
 }
 
@@ -30,36 +31,47 @@ const DEBRIS_TYPE_LABELS: Record<DebrisType, string> = {
 const DebrisItem = memo(function DebrisItem({
   debris,
   isSelected,
-  onClick,
+  onFocus,
+  onInfo,
 }: {
   debris: DebrisObject;
   isSelected: boolean;
-  onClick: () => void;
+  onFocus: () => void;
+  onInfo: () => void;
 }) {
   return (
-    <button
-      onClick={onClick}
-      className={`debris-item ${isSelected ? 'selected' : ''}`}
-    >
-      <div
-        className="debris-type-indicator"
-        style={{ backgroundColor: DEBRIS_TYPE_COLORS[debris.type] }}
-      />
-      <div className="debris-info">
-        <div className="debris-name">{debris.name}</div>
-        <div className="debris-meta">
-          <span style={{ color: DEBRIS_TYPE_COLORS[debris.type] }}>
-            {DEBRIS_TYPE_LABELS[debris.type]}
-          </span>
-          <span className="dot">•</span>
-          <span>{debris.origin}</span>
+    <div className={`debris-item ${isSelected ? 'selected' : ''}`}>
+      <button
+        onClick={onFocus}
+        className="debris-main"
+      >
+        <div
+          className="debris-type-indicator"
+          style={{ backgroundColor: DEBRIS_TYPE_COLORS[debris.type] }}
+        />
+        <div className="debris-info">
+          <div className="debris-name">{debris.name}</div>
+          <div className="debris-meta">
+            <span style={{ color: DEBRIS_TYPE_COLORS[debris.type] }}>
+              {DEBRIS_TYPE_LABELS[debris.type]}
+            </span>
+            <span className="dot">•</span>
+            <span>{debris.origin}</span>
+          </div>
         </div>
-      </div>
-      <div className="debris-metrics">
-        <div className="debris-altitude">{debris.altitudeKm.toFixed(0)} km</div>
-        <div className="debris-size">{debris.size}</div>
-      </div>
-    </button>
+        <div className="debris-metrics">
+          <div className="debris-altitude">{debris.altitudeKm.toFixed(0)} km</div>
+          <div className="debris-size">{debris.size}</div>
+        </div>
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onInfo(); }}
+        className="debris-info-btn"
+        title="View details"
+      >
+        <Info size={14} />
+      </button>
+    </div>
   );
 });
 
@@ -69,6 +81,7 @@ function DebrisTabComponent({
   filters,
   onFiltersChange,
   onDebrisSelect,
+  onDebrisFocus,
   selectedDebrisId,
 }: DebrisTabProps) {
   const [showFilters, setShowFilters] = useState(false);
@@ -205,7 +218,8 @@ function DebrisTabComponent({
             key={d.id}
             debris={d}
             isSelected={selectedDebrisId === d.id}
-            onClick={() => onDebrisSelect(selectedDebrisId === d.id ? null : d)}
+            onFocus={() => onDebrisFocus?.(d.id)}
+            onInfo={() => onDebrisSelect(selectedDebrisId === d.id ? null : d)}
           />
         ))}
         {filteredDebris.length === 0 && (
@@ -405,24 +419,62 @@ function DebrisTabComponent({
         .debris-item {
           display: flex;
           align-items: center;
-          gap: 10px;
-          padding: 10px 12px;
-          background: rgba(255, 255, 255, 0.03);
+          gap: 4px;
+          padding: 4px;
+          background: transparent;
           border: 1px solid transparent;
-          border-radius: 8px;
-          cursor: pointer;
+          border-radius: 12px;
           transition: all 0.15s ease;
-          text-align: left;
-          width: 100%;
         }
 
         .debris-item:hover {
-          background: rgba(255, 255, 255, 0.06);
+          background: rgba(255, 255, 255, 0.04);
+          border-color: rgba(255, 255, 255, 0.06);
         }
 
         .debris-item.selected {
-          background: rgba(255, 100, 100, 0.1);
-          border-color: rgba(255, 100, 100, 0.3);
+          background: rgba(255, 136, 0, 0.08);
+          border-color: rgba(255, 136, 0, 0.25);
+          box-shadow: inset 0 0 30px rgba(255, 136, 0, 0.05);
+        }
+
+        .debris-main {
+          flex: 1;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          background: transparent;
+          border: none;
+          border-radius: 10px;
+          cursor: pointer;
+          text-align: left;
+          transition: all 0.15s ease;
+        }
+
+        .debris-main:hover {
+          background: rgba(255, 255, 255, 0.03);
+        }
+
+        .debris-info-btn {
+          width: 32px;
+          height: 32px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 8px;
+          color: rgba(255, 255, 255, 0.5);
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.15s ease;
+        }
+
+        .debris-info-btn:hover {
+          background: rgba(255, 136, 0, 0.15);
+          border-color: rgba(255, 136, 0, 0.4);
+          color: #ff8800;
         }
 
         .debris-type-indicator {

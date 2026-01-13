@@ -46,13 +46,14 @@ function FloatingPanelComponent({
   // Reset position when panel opens
   useEffect(() => {
     if (isOpen && defaultPosition) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPosition(defaultPosition);
     }
   }, [isOpen, defaultPosition]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.panel-btn') ||
-        (e.target as HTMLElement).closest('.resize-handle')) return;
+      (e.target as HTMLElement).closest('.resize-handle')) return;
 
     onFocus?.();
     if (isMaximized) return;

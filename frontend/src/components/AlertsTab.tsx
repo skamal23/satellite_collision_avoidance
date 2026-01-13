@@ -1,10 +1,11 @@
 import { useMemo, memo, useCallback } from 'react';
-import { Clock, Target, Gauge, ShieldAlert, TrendingUp } from 'lucide-react';
+import { Clock, Target, Gauge, ShieldAlert, TrendingUp, Info } from 'lucide-react';
 import type { ConjunctionWarning } from '../types';
 
 interface AlertsTabProps {
   conjunctions: ConjunctionWarning[];
   onConjunctionSelect: (conjunction: ConjunctionWarning) => void;
+  onConjunctionFocus?: (satId: number) => void;
 }
 
 const formatTime = (seconds: number) => {
@@ -26,55 +27,59 @@ const riskOrder = { critical: 0, high: 1, medium: 2, low: 3 };
 const AlertItem = memo(function AlertItem({
   conjunction,
   riskLevel,
-  onSelect,
+  onFocus,
+  onInfo,
 }: {
   conjunction: ConjunctionWarning;
   riskLevel: 'critical' | 'high' | 'medium' | 'low';
-  onSelect: () => void;
+  onFocus: () => void;
+  onInfo: () => void;
 }) {
   return (
-    <button
-      onClick={onSelect}
-      className={`alert-item ${riskLevel}`}
-    >
-      <div className="alert-header">
-        <div className="alert-satellites">
-          <span className="primary-sat">{conjunction.sat1Name}</span>
-          <span className="vs">×</span>
-          <span className="secondary-sat">{conjunction.sat2Name}</span>
+    <div className={`alert-item ${riskLevel}`}>
+      <button onClick={onFocus} className="alert-main">
+        <div className="alert-header">
+          <div className="alert-satellites">
+            <span className="primary-sat">{conjunction.sat1Name}</span>
+            <span className="vs">×</span>
+            <span className="secondary-sat">{conjunction.sat2Name}</span>
+          </div>
+          <span className={`risk-badge ${riskLevel}`}>
+            {riskLevel}
+          </span>
         </div>
-        <span className={`risk-badge ${riskLevel}`}>
-          {riskLevel}
-        </span>
-      </div>
 
-      <div className="alert-metrics">
-        <div className="metric">
-          <Clock size={11} />
-          <span className="metric-value">{formatTime(conjunction.tca)}</span>
-          <span className="metric-label">TCA</span>
+        <div className="alert-metrics">
+          <div className="metric">
+            <Clock size={11} />
+            <span className="metric-value">{formatTime(conjunction.tca)}</span>
+            <span className="metric-label">TCA</span>
+          </div>
+          <div className="metric">
+            <Target size={11} />
+            <span className="metric-value">{conjunction.missDistance.toFixed(2)}</span>
+            <span className="metric-label">km</span>
+          </div>
+          <div className="metric">
+            <Gauge size={11} />
+            <span className="metric-value">{conjunction.relativeVelocity.toFixed(1)}</span>
+            <span className="metric-label">km/s</span>
+          </div>
+          <div className="metric probability">
+            <TrendingUp size={11} />
+            <span className="metric-value">{conjunction.collisionProbability.toExponential(1)}</span>
+            <span className="metric-label">Pc</span>
+          </div>
         </div>
-        <div className="metric">
-          <Target size={11} />
-          <span className="metric-value">{conjunction.missDistance.toFixed(2)}</span>
-          <span className="metric-label">km</span>
-        </div>
-        <div className="metric">
-          <Gauge size={11} />
-          <span className="metric-value">{conjunction.relativeVelocity.toFixed(1)}</span>
-          <span className="metric-label">km/s</span>
-        </div>
-        <div className="metric probability">
-          <TrendingUp size={11} />
-          <span className="metric-value">{conjunction.collisionProbability.toExponential(1)}</span>
-          <span className="metric-label">Pc</span>
-        </div>
-      </div>
-    </button>
+      </button>
+      <button onClick={(e) => { e.stopPropagation(); onInfo(); }} className="alert-info-btn" title="View details">
+        <Info size={14} />
+      </button>
+    </div>
   );
 });
 
-function AlertsTabComponent({ conjunctions, onConjunctionSelect }: AlertsTabProps) {
+function AlertsTabComponent({ conjunctions, onConjunctionSelect, onConjunctionFocus }: AlertsTabProps) {
   const sortedConjunctions = useMemo(() => {
     return [...conjunctions].sort((a, b) => {
       const aRisk = getRiskLevel(a.collisionProbability);
@@ -91,6 +96,12 @@ function AlertsTabComponent({ conjunctions, onConjunctionSelect }: AlertsTabProp
     return counts;
   }, [conjunctions]);
 
+  // Focus: highlight first satellite on globe (click row)
+  const handleFocus = useCallback((conjunction: ConjunctionWarning) => {
+    onConjunctionFocus?.(conjunction.sat1Id);
+  }, [onConjunctionFocus]);
+
+  // Info: open conjunction details (click info button)
   const handleSelect = useCallback((conjunction: ConjunctionWarning) => {
     onConjunctionSelect(conjunction);
   }, [onConjunctionSelect]);
@@ -131,7 +142,8 @@ function AlertsTabComponent({ conjunctions, onConjunctionSelect }: AlertsTabProp
             key={`${c.sat1Id}-${c.sat2Id}-${index}`}
             conjunction={c}
             riskLevel={getRiskLevel(c.collisionProbability)}
-            onSelect={() => handleSelect(c)}
+            onFocus={() => handleFocus(c)}
+            onInfo={() => handleSelect(c)}
           />
         ))}
         {conjunctions.length === 0 && (
@@ -198,14 +210,49 @@ function AlertsTabComponent({ conjunctions, onConjunctionSelect }: AlertsTabProp
         }
 
         .alert-item {
-          padding: 12px 14px;
+          display: flex;
+          align-items: stretch;
+          gap: 8px;
+          padding: 4px;
           background: rgba(255, 255, 255, 0.03);
           border: 1px solid rgba(255, 255, 255, 0.08);
           border-radius: 10px;
-          cursor: pointer;
           transition: all 0.15s ease;
+        }
+
+        .alert-main {
+          flex: 1;
+          padding: 10px 12px;
+          background: transparent;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
           text-align: left;
-          width: 100%;
+          transition: all 0.15s ease;
+        }
+
+        .alert-main:hover {
+          background: rgba(255, 255, 255, 0.03);
+        }
+
+        .alert-info-btn {
+          width: 36px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(255, 255, 255, 0.03);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 8px;
+          color: rgba(255, 255, 255, 0.5);
+          cursor: pointer;
+          flex-shrink: 0;
+          transition: all 0.15s ease;
+        }
+
+        .alert-info-btn:hover {
+          background: rgba(0, 212, 255, 0.15);
+          border-color: rgba(0, 212, 255, 0.4);
+          color: var(--accent-cyan, #00d4ff);
         }
 
         .alert-item:hover {

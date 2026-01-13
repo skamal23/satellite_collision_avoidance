@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect, memo } from 'react';
 import type { ReactNode } from 'react';
-import { Minus, Plus, X, Maximize2, Minimize2, Satellite, AlertTriangle, Clock, Trash2, GripVertical } from 'lucide-react';
+import { Minus, Plus, X, Maximize2, Minimize2, Satellite, AlertTriangle, Clock, Trash2, GripVertical, Database } from 'lucide-react';
 import type {
   SatelliteInfo,
   SatellitePosition,
@@ -10,13 +10,23 @@ import type {
   DebrisStatistics,
   DebrisFilterState,
   HistoryState,
+  TLESource,
+  TLEUpdateResult,
+  ConjunctionHistoryEntry,
+  HistoryResponse,
+  ConjunctionHistoryResponse,
 } from '../types';
 import { SatellitesTab } from './SatellitesTab';
 import { AlertsTab } from './AlertsTab';
 import { TimelineTab } from './TimelineTab';
 import { DebrisTab } from './DebrisTab';
+import { SettingsTab } from './SettingsTab';
 
-type TabType = 'satellites' | 'alerts' | 'timeline' | 'debris';
+// Panel size constraints - defined outside component to maintain stable references
+const MIN_SIZE = { width: 380, height: 400 };
+const MAX_SIZE = { width: 800, height: 900 };
+
+type TabType = 'satellites' | 'alerts' | 'timeline' | 'debris' | 'settings';
 
 interface TabConfig {
   id: TabType;
@@ -38,6 +48,7 @@ interface UnifiedPanelProps {
   filters: FilterState;
   onFiltersChange: (filters: Partial<FilterState>) => void;
   onSatelliteSelect: (id: number | null) => void;
+  onSatelliteFocus?: (id: number) => void;
 
   // Conjunction handling
   onConjunctionSelect: (conjunction: ConjunctionWarning) => void;
@@ -47,6 +58,7 @@ interface UnifiedPanelProps {
   onDebrisFiltersChange: (filters: Partial<DebrisFilterState>) => void;
   selectedDebrisId: number | null;
   onDebrisSelect: (debris: DebrisObject | null) => void;
+  onDebrisFocus?: (id: number) => void;
 
   // Timeline
   history: HistoryState;
@@ -55,6 +67,18 @@ interface UnifiedPanelProps {
   onTimelineSeek: (time: number) => void;
   onSpeedChange: (speed: number) => void;
   onToggleRecording: () => void;
+
+  // Server-backed history (Phase 6.2)
+  conjunctionHistory?: ConjunctionHistoryEntry[];
+  onFetchHistory?: (startTime: number, endTime: number) => Promise<HistoryResponse>;
+  onFetchConjunctionHistory?: (startTime: number, endTime: number) => Promise<ConjunctionHistoryResponse>;
+  onConjunctionHistoryClick?: (entry: ConjunctionHistoryEntry) => void;
+
+  // TLE Settings
+  tleSources?: TLESource[];
+  lastTLEUpdate?: number | null;
+  onUpdateTLEs?: (sourceNames?: string[]) => Promise<TLEUpdateResult[]>;
+  onToggleTLESource?: (sourceName: string, enabled: boolean) => void;
 
   // Panel state
   isOpen: boolean;
@@ -72,17 +96,27 @@ function UnifiedPanelComponent({
   filters,
   onFiltersChange,
   onSatelliteSelect,
+  onSatelliteFocus,
   onConjunctionSelect,
   debrisFilters,
   onDebrisFiltersChange,
   selectedDebrisId,
   onDebrisSelect,
+  onDebrisFocus,
   history,
   onTimelinePlay,
   onTimelinePause,
   onTimelineSeek,
   onSpeedChange,
   onToggleRecording,
+  conjunctionHistory = [],
+  onFetchHistory,
+  onFetchConjunctionHistory,
+  onConjunctionHistoryClick,
+  tleSources = [],
+  lastTLEUpdate = null,
+  onUpdateTLEs,
+  onToggleTLESource,
   isOpen,
   onClose,
   defaultPosition = { x: 20, y: 70 },
@@ -101,28 +135,18 @@ function UnifiedPanelComponent({
   const dragStartRef = useRef({ x: 0, y: 0, panelX: 0, panelY: 0 });
   const resizeStartRef = useRef({ x: 0, y: 0, width: 0, height: 0, panelX: 0, panelY: 0 });
 
-  const minSize = { width: 380, height: 400 };
-  const maxSize = { width: 800, height: 900 };
-
   const tabs: TabConfig[] = [
     { id: 'satellites', label: 'Satellites', icon: <Satellite size={16} />, badge: satellites.length },
     { id: 'alerts', label: 'Alerts', icon: <AlertTriangle size={16} />, badge: conjunctions.length, badgeType: conjunctions.length > 0 ? 'alert' : 'normal' },
     { id: 'timeline', label: 'Timeline', icon: <Clock size={16} /> },
     { id: 'debris', label: 'Debris', icon: <Trash2 size={16} />, badge: debris.length },
+    { id: 'settings', label: 'Data', icon: <Database size={16} /> },
   ];
-
-  // Reset position when panel opens
-  useEffect(() => {
-    if (isOpen) {
-      setPosition(defaultPosition);
-      setSize(defaultSize);
-    }
-  }, [isOpen, defaultPosition, defaultSize]);
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('.panel-btn') ||
-        (e.target as HTMLElement).closest('.resize-handle') ||
-        (e.target as HTMLElement).closest('.tab-btn')) return;
+      (e.target as HTMLElement).closest('.resize-handle') ||
+      (e.target as HTMLElement).closest('.tab-btn')) return;
 
     if (isMaximized) return;
 
@@ -169,7 +193,14 @@ function UnifiedPanelComponent({
   useEffect(() => {
     if (!isDragging && !isResizing) return;
 
+    let lastUpdate = 0;
+    const throttleMs = 16; // ~60fps
+
     const handleMouseMove = (e: MouseEvent) => {
+      const now = performance.now();
+      if (now - lastUpdate < throttleMs) return;
+      lastUpdate = now;
+
       if (isDragging) {
         const deltaX = e.clientX - dragStartRef.current.x;
         const deltaY = e.clientY - dragStartRef.current.y;
@@ -196,21 +227,21 @@ function UnifiedPanelComponent({
         let newY = resizeStartRef.current.panelY;
 
         if (isResizing.includes('e')) {
-          newWidth = Math.min(maxSize.width, Math.max(minSize.width, resizeStartRef.current.width + deltaX));
+          newWidth = Math.min(MAX_SIZE.width, Math.max(MIN_SIZE.width, resizeStartRef.current.width + deltaX));
         }
         if (isResizing.includes('w')) {
           const widthDelta = -deltaX;
-          newWidth = Math.min(maxSize.width, Math.max(minSize.width, resizeStartRef.current.width + widthDelta));
+          newWidth = Math.min(MAX_SIZE.width, Math.max(MIN_SIZE.width, resizeStartRef.current.width + widthDelta));
           if (newWidth !== resizeStartRef.current.width) {
             newX = resizeStartRef.current.panelX - (newWidth - resizeStartRef.current.width);
           }
         }
         if (isResizing.includes('s')) {
-          newHeight = Math.min(maxSize.height, Math.max(minSize.height, resizeStartRef.current.height + deltaY));
+          newHeight = Math.min(MAX_SIZE.height, Math.max(MIN_SIZE.height, resizeStartRef.current.height + deltaY));
         }
         if (isResizing.includes('n')) {
           const heightDelta = -deltaY;
-          newHeight = Math.min(maxSize.height, Math.max(minSize.height, resizeStartRef.current.height + heightDelta));
+          newHeight = Math.min(MAX_SIZE.height, Math.max(MIN_SIZE.height, resizeStartRef.current.height + heightDelta));
           if (newHeight !== resizeStartRef.current.height) {
             newY = resizeStartRef.current.panelY - (newHeight - resizeStartRef.current.height);
           }
@@ -246,6 +277,7 @@ function UnifiedPanelComponent({
         case '2': setActiveTab('alerts'); break;
         case '3': setActiveTab('timeline'); break;
         case '4': setActiveTab('debris'); break;
+        case '5': setActiveTab('settings'); break;
       }
     };
 
@@ -265,6 +297,7 @@ function UnifiedPanelComponent({
             filters={filters}
             onFiltersChange={onFiltersChange}
             onSatelliteSelect={onSatelliteSelect}
+            onSatelliteFocus={onSatelliteFocus}
           />
         );
       case 'alerts':
@@ -272,6 +305,7 @@ function UnifiedPanelComponent({
           <AlertsTab
             conjunctions={conjunctions}
             onConjunctionSelect={onConjunctionSelect}
+            onConjunctionFocus={onSatelliteFocus}
           />
         );
       case 'timeline':
@@ -283,6 +317,10 @@ function UnifiedPanelComponent({
             onSeek={onTimelineSeek}
             onSpeedChange={onSpeedChange}
             onToggleRecording={onToggleRecording}
+            conjunctionHistory={conjunctionHistory}
+            onFetchHistory={onFetchHistory}
+            onFetchConjunctionHistory={onFetchConjunctionHistory}
+            onConjunctionHistoryClick={onConjunctionHistoryClick}
           />
         );
       case 'debris':
@@ -293,8 +331,23 @@ function UnifiedPanelComponent({
             filters={debrisFilters}
             onFiltersChange={onDebrisFiltersChange}
             onDebrisSelect={onDebrisSelect}
+            onDebrisFocus={onDebrisFocus}
             selectedDebrisId={selectedDebrisId}
           />
+        );
+      case 'settings':
+        return onUpdateTLEs && onToggleTLESource ? (
+          <SettingsTab
+            tleSources={tleSources}
+            lastUpdateTime={lastTLEUpdate}
+            totalSatellites={satellites.length}
+            onUpdateTLEs={onUpdateTLEs}
+            onToggleSource={onToggleTLESource}
+          />
+        ) : (
+          <div style={{ padding: 20, textAlign: 'center', color: 'rgba(255,255,255,0.5)' }}>
+            TLE updates not configured
+          </div>
         );
     }
   };
@@ -391,18 +444,7 @@ function UnifiedPanelComponent({
           display: flex;
           flex-direction: column;
           transition: box-shadow 0.2s ease;
-          animation: panelSlideIn 0.3s ease;
-        }
-
-        @keyframes panelSlideIn {
-          from {
-            opacity: 0;
-            transform: translateX(-20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateX(0);
-          }
+          touch-action: none;
         }
 
         .unified-panel.minimized {
@@ -410,15 +452,23 @@ function UnifiedPanelComponent({
         }
 
         .unified-panel.dragging {
-          cursor: grabbing;
+          cursor: grabbing !important;
+          user-select: none;
+          transition: none;
           box-shadow:
             0 0 0 2px var(--accent-cyan, #00d4ff),
             0 25px 80px rgba(0, 212, 255, 0.25),
             var(--glass-shadow);
         }
 
+        .unified-panel.dragging * {
+          cursor: grabbing !important;
+          user-select: none;
+        }
+
         .unified-panel.resizing {
           transition: none;
+          user-select: none;
         }
 
         .unified-panel.maximized {

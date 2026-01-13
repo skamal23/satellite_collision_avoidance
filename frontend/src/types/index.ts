@@ -120,6 +120,58 @@ export interface TLEUpdateResult {
   fetchTime: number;
 }
 
+// Phase 6.3: Maneuver optimization
+export interface OptimizeManeuverRequest {
+  satelliteId: number;
+  threatId: number;
+  targetMissDistance: number;  // km
+  timeToTca: number;           // seconds
+  spacecraft: SpacecraftParams;
+}
+
+export interface OptimizeManeuverResult {
+  success: boolean;
+  message: string;
+  recommendedDeltaV: Vec3;
+  burnTime: number;
+  totalDeltaV: number;
+  fuelCostKg: number;
+  expectedMissDistance: number;
+  alternatives: ManeuverAlternative[];
+}
+
+// Conjunction history from server
+export interface ConjunctionHistoryEntry {
+  conjunction: ConjunctionWarning;
+  timestamp: number;
+}
+
+// Phase 6.2: History replay requests/responses
+export interface HistoryRequest {
+  startTime: number;  // Unix timestamp (seconds)
+  endTime: number;    // Unix timestamp (seconds)
+  satelliteIds?: number[];  // Optional filter
+  intervalSeconds?: number; // Sampling interval
+}
+
+export interface HistoryResponse {
+  snapshots: PositionSnapshot[];
+  totalSnapshots: number;
+  startTime: number;
+  endTime: number;
+}
+
+export interface ConjunctionHistoryRequest {
+  startTime: number;
+  endTime: number;
+  minProbability?: number;  // Filter by minimum collision probability
+}
+
+export interface ConjunctionHistoryResponse {
+  entries: ConjunctionHistoryEntry[];
+  totalEntries: number;
+}
+
 // Phase 6.5: Space debris
 export type DebrisType = 'rocket_body' | 'payload_debris' | 'mission_debris' | 'fragmentation' | 'unknown';
 export type DebrisSize = 'large' | 'medium' | 'small';

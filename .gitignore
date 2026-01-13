@@ -28,3 +28,6 @@ compile_commands.json
 # Data files (downloaded separately)
 data/
 
+CLAUDE.md
+purpose.md
+.claude/

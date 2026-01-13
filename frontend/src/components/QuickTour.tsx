@@ -1,5 +1,6 @@
 import { memo, useState, useCallback, useEffect } from 'react';
 import { X, ChevronLeft, ChevronRight, Globe, Satellite, AlertTriangle, Clock, Settings } from 'lucide-react';
+import { markTourCompleted } from '../utils/tourStorage';
 
 interface TourStep {
   id: string;
@@ -54,8 +55,6 @@ const TOUR_STEPS: TourStep[] = [
   },
 ];
 
-const TOUR_STORAGE_KEY = 'orbitops-tour-completed';
-
 interface QuickTourProps {
   isOpen: boolean;
   onClose: () => void;
@@ -64,8 +63,10 @@ interface QuickTourProps {
 function QuickTourComponent({ isOpen, onClose }: QuickTourProps) {
   const [currentStep, setCurrentStep] = useState(0);
 
+  // Reset to step 0 when tour opens
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCurrentStep(0);
     }
   }, [isOpen]);
@@ -74,7 +75,7 @@ function QuickTourComponent({ isOpen, onClose }: QuickTourProps) {
     if (currentStep < TOUR_STEPS.length - 1) {
       setCurrentStep(prev => prev + 1);
     } else {
-      localStorage.setItem(TOUR_STORAGE_KEY, 'true');
+      markTourCompleted();
       onClose();
     }
   }, [currentStep, onClose]);
@@ -86,7 +87,7 @@ function QuickTourComponent({ isOpen, onClose }: QuickTourProps) {
   }, [currentStep]);
 
   const handleSkip = useCallback(() => {
-    localStorage.setItem(TOUR_STORAGE_KEY, 'true');
+    markTourCompleted();
     onClose();
   }, [onClose]);
 
@@ -378,10 +379,6 @@ function QuickTourComponent({ isOpen, onClose }: QuickTourProps) {
   );
 }
 
-// Export helper to check if tour should auto-show
-export const shouldShowTour = (): boolean => {
-  if (typeof window === 'undefined') return false;
-  return localStorage.getItem(TOUR_STORAGE_KEY) !== 'true';
-};
-
 export const QuickTour = memo(QuickTourComponent);
+
+

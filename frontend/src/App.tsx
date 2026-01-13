@@ -3,9 +3,10 @@ import { GlobeViewer } from './components/GlobeViewer';
 import { StatusBar } from './components/StatusBar';
 import { UnifiedPanel } from './components/UnifiedPanel';
 import { SatelliteDetailDrawer } from './components/SatelliteDetailDrawer';
-import { QuickTour, shouldShowTour } from './components/QuickTour';
+import { QuickTour } from './components/QuickTour';
+import { shouldShowTour } from './utils/tourStorage';
 import { useSatellites } from './hooks/useSatellites';
-import type { FilterState, ConjunctionWarning, DebrisFilterState, DebrisObject, HistoryState, SpacecraftParams, ManeuverResult, SatelliteInfo, SatellitePosition } from './types';
+import type { FilterState, ConjunctionWarning, DebrisFilterState, DebrisObject, HistoryState, SpacecraftParams, ManeuverResult, SatelliteInfo, SatellitePosition, OptimizeManeuverResult, TLESource, TLEUpdateResult, ConjunctionHistoryEntry, HistoryResponse, ConjunctionHistoryResponse, PositionSnapshot } from './types';
 import { Settings, X, Orbit, Tag, AlertTriangle, Trash2, Layers } from 'lucide-react';
 
 const defaultFilters: FilterState = {
@@ -41,6 +42,9 @@ function App() {
   // Panel state
   const [isPanelOpen, setIsPanelOpen] = useState(true);
 
+  // Focus state for fly-to animation
+  const [focusSatelliteId, setFocusSatelliteId] = useState<number | null>(null);
+
   // Modals
   const [showSettings, setShowSettings] = useState(false);
   const [showTour, setShowTour] = useState(false);
@@ -53,19 +57,22 @@ function App() {
     }
   }, []);
 
-  // History state for timeline
-  const [history, setHistory] = useState<HistoryState>({
-    isRecording: true,
-    isPlaying: false,
-    currentTime: Date.now() / 1000,
-    startTime: Date.now() / 1000,
-    endTime: Date.now() / 1000 + 3600,
-    playbackSpeed: 1,
-    snapshots: [],
+  // History state for timeline - using lazy initialization to avoid impure calls during render
+  const [history, setHistory] = useState<HistoryState>(() => {
+    const now = Date.now() / 1000;
+    return {
+      isRecording: true,
+      isPlaying: false,
+      currentTime: now,
+      startTime: now,
+      endTime: now + 3600,
+      playbackSpeed: 1,
+      snapshots: [],
+    };
   });
 
   const frameTimesRef = useRef<number[]>([]);
-  const lastFrameTimeRef = useRef(performance.now());
+  const lastFrameTimeRef = useRef<number>(0); // Initialized in useEffect
   const animationFrameIdRef = useRef<number | null>(null);
   const fpsUpdateCounterRef = useRef(0);
 
@@ -83,6 +90,9 @@ function App() {
 
   // FPS calculation
   useEffect(() => {
+    // Initialize the ref with current time inside effect (not during render)
+    lastFrameTimeRef.current = performance.now();
+
     const animate = () => {
       const now = performance.now();
       const delta = now - lastFrameTimeRef.current;
@@ -160,9 +170,26 @@ function App() {
     }));
   }, []);
 
+  // Focus handler - triggers camera fly-to without opening drawer
+  const handleSatelliteFocus = useCallback((id: number) => {
+    setFocusSatelliteId(id);
+    setFilters(prev => ({ ...prev, selectedSatelliteId: id }));
+  }, []);
+
   const handleDebrisFiltersChange = useCallback((update: Partial<DebrisFilterState>) => {
     setDebrisFilters(prev => ({ ...prev, ...update }));
   }, []);
+
+  // Debris focus handler - reuses satellite focus mechanism
+  const handleDebrisFocus = useCallback((id: number) => {
+    // For debris, we find matching position by ID from debris array
+    const debrisItem = debris.find(d => d.id === id);
+    if (debrisItem) {
+      // Use focusSatelliteId to trigger camera fly-to (works for any ECI position)
+      setFocusSatelliteId(id);
+      setSelectedDebrisId(id);
+    }
+  }, [debris]);
 
   const handleDebrisSelect = useCallback((selected: DebrisObject | null) => {
     setSelectedDebrisId(selected?.id ?? null);
@@ -229,6 +256,138 @@ function App() {
     };
   }, [positions, conjunctions]);
 
+  // Optimize maneuver handler (Phase 6.3 - calculates optimal δV)
+  const handleOptimizeManeuver = useCallback(async (
+    satelliteId: number,
+    threatId: number,
+    targetMissDistance: number,
+    _timeToTca: number,
+    spacecraft: SpacecraftParams
+  ): Promise<OptimizeManeuverResult> => {
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // Mock optimal δV calculation
+    // In real implementation, this would call the gRPC OptimizeManeuver endpoint
+    const conjunction = conjunctions.find(c =>
+      (c.sat1Id === satelliteId && c.sat2Id === threatId) ||
+      (c.sat2Id === satelliteId && c.sat1Id === threatId)
+    );
+
+    if (!conjunction) {
+      return {
+        success: false,
+        message: 'No active conjunction with the specified threat',
+        recommendedDeltaV: { x: 0, y: 0, z: 0 },
+        burnTime: 0,
+        totalDeltaV: 0,
+        fuelCostKg: 0,
+        expectedMissDistance: 0,
+        alternatives: [],
+      };
+    }
+
+    // Calculate a plausible optimal δV (simplified physics)
+    const missDeficit = targetMissDistance - conjunction.missDistance;
+    const scaleFactor = missDeficit / (conjunction.relativeVelocity * 1000);
+    const optimalDv = Math.abs(scaleFactor) * 0.001; // ~1 m/s per km of miss distance needed
+
+    const recommendedDeltaV = {
+      x: -optimalDv * 0.707, // Radial component
+      y: optimalDv * 0.5,    // In-track component
+      z: optimalDv * 0.5,    // Cross-track component
+    };
+
+    const totalDv = Math.sqrt(recommendedDeltaV.x ** 2 + recommendedDeltaV.y ** 2 + recommendedDeltaV.z ** 2);
+    const fuelCost = spacecraft.massKg * (1 - 1 / Math.exp((totalDv * 1000) / (spacecraft.ispS * 9.80665)));
+
+    if (fuelCost > spacecraft.fuelMassKg) {
+      return {
+        success: false,
+        message: `Insufficient fuel. Need ${fuelCost.toFixed(2)} kg, have ${spacecraft.fuelMassKg} kg`,
+        recommendedDeltaV,
+        burnTime: Date.now() / 1000,
+        totalDeltaV: totalDv,
+        fuelCostKg: fuelCost,
+        expectedMissDistance: targetMissDistance,
+        alternatives: [],
+      };
+    }
+
+    return {
+      success: true,
+      message: 'Optimal avoidance maneuver calculated',
+      recommendedDeltaV,
+      burnTime: Date.now() / 1000 + 1800, // 30 minutes from now
+      totalDeltaV: totalDv,
+      fuelCostKg: fuelCost,
+      expectedMissDistance: targetMissDistance,
+      alternatives: [
+        {
+          deltaV: { x: recommendedDeltaV.x * 1.5, y: recommendedDeltaV.y * 1.5, z: recommendedDeltaV.z * 1.5 },
+          burnTime: Date.now() / 1000 + 1200,
+          newMissDistance: targetMissDistance * 1.5,
+          fuelCostKg: fuelCost * 1.5,
+          description: 'Earlier burn, higher delta-V'
+        },
+        {
+          deltaV: { x: recommendedDeltaV.x * 0.7, y: recommendedDeltaV.y * 0.7, z: recommendedDeltaV.z * 0.7 },
+          burnTime: Date.now() / 1000 + 2700,
+          newMissDistance: targetMissDistance * 0.7,
+          fuelCostKg: fuelCost * 0.7,
+          description: 'Fuel efficient, smaller margin'
+        }
+      ],
+    };
+  }, [conjunctions]);
+
+  // TLE Sources state and handlers (Phase 6.4)
+  const [tleSources, setTleSources] = useState<TLESource[]>([
+    { name: 'Space Stations', url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=stations', refreshIntervalMinutes: 60, enabled: true, satelliteCount: 35 },
+    { name: 'Starlink', url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=starlink', refreshIntervalMinutes: 120, enabled: true, satelliteCount: 5800 },
+    { name: 'Active Satellites', url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=active', refreshIntervalMinutes: 240, enabled: true, satelliteCount: 8500 },
+    { name: 'Space Debris', url: 'https://celestrak.org/NORAD/elements/gp.php?SPECIAL=debris', refreshIntervalMinutes: 360, enabled: true, satelliteCount: 2200 },
+    { name: 'Weather Satellites', url: 'https://celestrak.org/NORAD/elements/gp.php?GROUP=weather', refreshIntervalMinutes: 240, enabled: false, satelliteCount: 180 },
+  ]);
+  const [lastTLEUpdate, setLastTLEUpdate] = useState<number | null>(() => Date.now() / 1000 - 7200); // 2 hours ago
+
+  const handleUpdateTLEs = useCallback(async (sourceNames?: string[]): Promise<TLEUpdateResult[]> => {
+    // Mock TLE update - in real implementation, calls gRPC UpdateTLEs
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    const sourcesToUpdate = sourceNames
+      ? tleSources.filter(s => sourceNames.includes(s.name) && s.enabled)
+      : tleSources.filter(s => s.enabled);
+
+    const results: TLEUpdateResult[] = sourcesToUpdate.map(source => ({
+      sourceName: source.name,
+      success: Math.random() > 0.1, // 90% success rate simulation
+      satellitesUpdated: source.satelliteCount || 0,
+      fetchTime: Date.now() / 1000,
+      errorMessage: Math.random() > 0.1 ? undefined : 'Connection timeout',
+    }));
+
+    // Update last update time
+    setLastTLEUpdate(Date.now() / 1000);
+
+    // Update source last update times
+    setTleSources(prev => prev.map(source => {
+      const result = results.find(r => r.sourceName === source.name);
+      if (result?.success) {
+        return { ...source, lastUpdate: Date.now() / 1000 };
+      }
+      return source;
+    }));
+
+    return results;
+  }, [tleSources]);
+
+  const handleToggleTLESource = useCallback((sourceName: string, enabled: boolean) => {
+    setTleSources(prev => prev.map(source =>
+      source.name === sourceName ? { ...source, enabled } : source
+    ));
+  }, []);
+
   // Timeline handlers
   const handleTimelinePlay = useCallback(() => {
     setHistory(h => ({ ...h, isPlaying: true }));
@@ -248,6 +407,94 @@ function App() {
 
   const handleToggleRecording = useCallback(() => {
     setHistory(h => ({ ...h, isRecording: !h.isRecording }));
+  }, []);
+
+  // Server-backed history (Phase 6.2)
+  const [conjunctionHistory, setConjunctionHistory] = useState<ConjunctionHistoryEntry[]>([]);
+
+  // Mock handler for GetHistory RPC
+  const handleFetchHistory = useCallback(async (startTime: number, endTime: number): Promise<HistoryResponse> => {
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Generate mock historical snapshots
+    const snapshots: PositionSnapshot[] = [];
+    const intervalSeconds = 300; // 5-minute intervals
+    const numSnapshots = Math.floor((endTime - startTime) / intervalSeconds);
+
+    for (let i = 0; i < Math.min(numSnapshots, 100); i++) {
+      const timestamp = startTime + i * intervalSeconds;
+      snapshots.push({
+        timestamp,
+        satelliteIds: satellites.slice(0, 50).map(s => s.id),
+        positionsX: satellites.slice(0, 50).map(() => Math.random() * 10000 - 5000),
+        positionsY: satellites.slice(0, 50).map(() => Math.random() * 10000 - 5000),
+        positionsZ: satellites.slice(0, 50).map(() => Math.random() * 10000 - 5000),
+      });
+    }
+
+    // Update history state with loaded range
+    setHistory(h => ({
+      ...h,
+      startTime,
+      endTime,
+      currentTime: startTime,
+      snapshots,
+    }));
+
+    return {
+      snapshots,
+      totalSnapshots: snapshots.length,
+      startTime,
+      endTime,
+    };
+  }, [satellites]);
+
+  // Mock handler for GetConjunctionHistory RPC
+  const handleFetchConjunctionHistory = useCallback(async (startTime: number, endTime: number): Promise<ConjunctionHistoryResponse> => {
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    // Generate mock conjunction history based on current conjunctions
+    const entries: ConjunctionHistoryEntry[] = conjunctions.map((conj, idx) => ({
+      conjunction: conj,
+      timestamp: startTime + ((endTime - startTime) * (idx + 1)) / (conjunctions.length + 1),
+    }));
+
+    // Add some additional historical events
+    for (let i = 0; i < 5; i++) {
+      const mockConj: ConjunctionWarning = {
+        sat1Id: Math.floor(Math.random() * 1000),
+        sat1Name: `SAT-${Math.floor(Math.random() * 1000)}`,
+        sat2Id: Math.floor(Math.random() * 1000) + 1000,
+        sat2Name: `DEBRIS-${Math.floor(Math.random() * 100)}`,
+        tca: startTime + Math.random() * (endTime - startTime),
+        missDistance: 0.5 + Math.random() * 5,
+        relativeVelocity: 5 + Math.random() * 10,
+        collisionProbability: Math.random() * 1e-4,
+      };
+      entries.push({
+        conjunction: mockConj,
+        timestamp: mockConj.tca,
+      });
+    }
+
+    // Sort by timestamp
+    entries.sort((a, b) => a.timestamp - b.timestamp);
+
+    setConjunctionHistory(entries);
+
+    return {
+      entries,
+      totalEntries: entries.length,
+    };
+  }, [conjunctions]);
+
+  // Handler when user clicks a conjunction in timeline
+  const handleConjunctionHistoryClick = useCallback((entry: ConjunctionHistoryEntry) => {
+    // Select the primary satellite and focus on it
+    setFilters(prev => ({ ...prev, selectedSatelliteId: entry.conjunction.sat1Id }));
+    setFocusSatelliteId(entry.conjunction.sat1Id);
   }, []);
 
   // Loading state
@@ -320,6 +567,7 @@ function App() {
         debrisFilters={debrisFilters}
         onSatelliteClick={handleSatelliteSelect}
         theme="dark"
+        focusSatelliteId={focusSatelliteId}
       />
 
       {/* Unified Control Panel */}
@@ -332,17 +580,27 @@ function App() {
         filters={filters}
         onFiltersChange={handleFiltersChange}
         onSatelliteSelect={handleSatelliteSelect}
+        onSatelliteFocus={handleSatelliteFocus}
         onConjunctionSelect={handleConjunctionSelect}
         debrisFilters={debrisFilters}
         onDebrisFiltersChange={handleDebrisFiltersChange}
         selectedDebrisId={selectedDebrisId}
         onDebrisSelect={handleDebrisSelect}
+        onDebrisFocus={handleDebrisFocus}
         history={history}
         onTimelinePlay={handleTimelinePlay}
         onTimelinePause={handleTimelinePause}
         onTimelineSeek={handleTimelineSeek}
         onSpeedChange={handleSpeedChange}
         onToggleRecording={handleToggleRecording}
+        conjunctionHistory={conjunctionHistory}
+        onFetchHistory={handleFetchHistory}
+        onFetchConjunctionHistory={handleFetchConjunctionHistory}
+        onConjunctionHistoryClick={handleConjunctionHistoryClick}
+        tleSources={tleSources}
+        lastTLEUpdate={lastTLEUpdate}
+        onUpdateTLEs={handleUpdateTLEs}
+        onToggleTLESource={handleToggleTLESource}
         isOpen={isPanelOpen}
         onClose={() => setIsPanelOpen(false)}
         defaultPosition={{ x: 20, y: 20 }}
@@ -368,6 +626,7 @@ function App() {
           conjunctions={conjunctions}
           onClose={handleCloseDrawer}
           onSimulateManeuver={handleSimulateManeuver}
+          onOptimizeManeuver={handleOptimizeManeuver}
           onConjunctionSelect={handleConjunctionSelect}
         />
       )}
@@ -381,7 +640,7 @@ function App() {
         onRefresh={refreshData}
         loading={loading}
         onSettingsClick={() => setShowSettings(true)}
-        onPerformanceClick={() => {}}
+        onPerformanceClick={() => { }}
       />
 
       {/* Settings Modal */}
@@ -465,6 +724,7 @@ function App() {
                   <div className="shortcut"><kbd>2</kbd> Alerts tab</div>
                   <div className="shortcut"><kbd>3</kbd> Timeline tab</div>
                   <div className="shortcut"><kbd>4</kbd> Debris tab</div>
+                  <div className="shortcut"><kbd>5</kbd> Data tab</div>
                   <div className="shortcut"><kbd>P</kbd> Toggle panel</div>
                   <div className="shortcut"><kbd>Space</kbd> Play/Pause</div>
                   <div className="shortcut"><kbd>Esc</kbd> Close drawer</div>
